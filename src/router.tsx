@@ -10,8 +10,8 @@ import {NotFound} from './pages/NotFound'
 const root = createRootRoute({component: Layout, notFoundComponent: NotFound})
 const signIn = createRoute({getParentRoute: () => root, path: '/sign-in', component: SignIn})
 const home = createRoute({getParentRoute: () => root, path: '/', component: Home})
-const company = createRoute({getParentRoute: () => root, path: '/companies/$companyId', component: () => <CompanyReport />})
-const report = createRoute({getParentRoute: () => root, path: '/companies/$companyId/reports/$reportId', component: () => <CompanyReport />})
+const company = createRoute({getParentRoute: () => root, path: '/companies/$companyId', component: () => <CompanyReport {...company.useParams()} />})
+const report = createRoute({getParentRoute: () => root, path: '/companies/$companyId/reports/$reportId', component: () => <CompanyReport {...report.useParams()} />})
 const settings = createRoute({getParentRoute: () => root, path: '/companies/$companyId/settings', component: CompanySettings})
 const admin = createRoute({getParentRoute: () => root, path: '/admin', component: Admin})
 

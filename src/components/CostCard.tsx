@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {formatDate, money, type ServiceCost} from '../api'
+import {daysUntil, formatDate, money, type ServiceCost} from '../api'
 import {Badge, Card, Stat} from './ui'
 
 // BEH-012: what the programme pays to run the service. Brave and Azure can
@@ -10,7 +10,7 @@ export const CostCard = ({cost}: {cost: ServiceCost}) => {
 	const model = cost.programmeModel
 	// Shown while a free period is set, and afterwards while it has a cost to report.
 	const showModel = model.freePeriodUntil != null || model.total > 0
-	const daysToReview = Math.ceil((Date.parse(`${cost.reviewDate.slice(0, 10)}T00:00:00Z`) - Date.now()) / 864e5)
+	const daysToReview = daysUntil(cost.reviewDate)
 	return (
 		<Card
 			title="Service cost (paid by the programme)"

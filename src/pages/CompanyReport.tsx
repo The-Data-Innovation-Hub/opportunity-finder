@@ -1,16 +1,15 @@
 import {useMemo, useState} from 'react'
-import {Link, useParams} from '@tanstack/react-router'
+import {Link} from '@tanstack/react-router'
 import {useQuery} from '@tanstack/react-query'
-import {api, formatDate, safeHref, type Credential, type OpportunityRow, type Profile, type Region, type Report, type ReportSummary} from '../api'
+import {api, daysUntil, formatDate, safeHref, type Credential, type OpportunityRow, type Profile, type Region, type Report, type ReportSummary} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Input, Loading, Notice, Select, Stat} from '../components/ui'
 import {CompanyTabs} from '../components/CompanyTabs'
 
 const REGION_NAMES: Record<Region, string> = {NI: 'Northern Ireland', IE: 'Ireland', UK: 'Great Britain and UK-wide'}
-const daysUntil = (date: string | null) => date ? Math.ceil((Date.parse(`${date.slice(0, 10)}T23:59:59Z`) - Date.now()) / 864e5) : null
 
-export const CompanyReport = () => {
-	const {companyId, reportId} = useParams({strict: false}) as {companyId: string, reportId?: string}
+// Serves both /companies/$companyId and .../reports/$reportId; the router passes the params.
+export const CompanyReport = ({companyId, reportId}: {companyId: string, reportId?: string}) => {
 	const me = useMe()
 	const company = me.data?.companies.find((c) => c.id == companyId)
 	const reports = useQuery({queryKey: ['reports', companyId], queryFn: () => api.get<{reports: ReportSummary[]}>(`/companies/${companyId}/reports?limit=13`)})
@@ -172,9 +171,9 @@ const Opportunities = ({rows}: {rows: OpportunityRow[]}) => {
 
 	return (
 		<Card title="All opportunities">
-			<div role="tablist" aria-label="Kind" className="mb-4 flex gap-2">
+			<div role="group" aria-label="Kind" className="mb-4 flex gap-2">
 				{(['funding', 'tender'] as const).map((k) => (
-					<button key={k} role="tab" aria-selected={kind == k} onClick={() => setKind(k)}
+					<button key={k} type="button" aria-pressed={kind == k} onClick={() => setKind(k)}
 						className={`rounded-md px-3 py-1.5 text-sm font-medium ${kind == k ? 'bg-brand text-white' : 'bg-surface text-ink hover:bg-line'}`}>
 						{k == 'funding' ? 'Funding' : 'Tenders'} ({counts[k]})
 					</button>
@@ -201,7 +200,7 @@ const Opportunities = ({rows}: {rows: OpportunityRow[]}) => {
 						</thead>
 						<tbody className="divide-y divide-line">
 							{shown.map((r) => {
-								const days = daysUntil(r.closing_date)
+								const days = r.closing_date ? daysUntil(r.closing_date) : null
 								return (
 									<tr key={r.id} className="align-top">
 										<td className="py-2 pr-3">
@@ -214,7 +213,7 @@ const Opportunities = ({rows}: {rows: OpportunityRow[]}) => {
 										<td className="py-2 pr-3">{r.row_data.amount ?? r.row_data.value ?? '—'}</td>
 										<td className="py-2 pr-3 whitespace-nowrap">
 											{r.closing_date ? formatDate(r.closing_date) : '—'}
-											{days != null && days >= 0 && days <= 30 && r.status != 'Closed' && <p><Badge tone="warn">{days} days left</Badge></p>}
+											{days != null && days >= 0 && days <= 30 && r.status != 'Closed' && <p><Badge tone="warn">{days == 0 ? 'Closes today' : days == 1 ? '1 day left' : `${days} days left`}</Badge></p>}
 										</td>
 										<td className="py-2"><Badge tone={r.status == 'Closed' ? 'bad' : r.status == 'Opening soon' ? 'neutral' : 'good'}>{r.status}</Badge></td>
 									</tr>

@@ -93,11 +93,11 @@ export const MultiSelect = ({id, label, options, value, onChange, disabled, max,
 }
 
 const tones = {
-	neutral: 'bg-slate-100 text-slate-700',
-	good: 'bg-green-50 text-good',
-	warn: 'bg-amber-50 text-warn',
-	bad: 'bg-red-50 text-bad',
-	brand: 'bg-blue-50 text-brand',
+	neutral: 'bg-neutral-soft text-neutral-ink',
+	good: 'bg-good-soft text-good',
+	warn: 'bg-warn-soft text-warn',
+	bad: 'bg-bad-soft text-bad',
+	brand: 'bg-brand-soft text-brand',
 }
 export const Badge = ({tone = 'neutral', children}: {tone?: keyof typeof tones, children: ReactNode}) => (
 	<span className={cx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', tones[tone])}>{children}</span>
@@ -114,7 +114,7 @@ export const Loading = ({label = 'Loading'}: {label?: string}) => (
 export const ErrorBox = ({error, onRetry}: {error: unknown, onRetry?: () => void}) => {
 	const message = error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
 	return (
-		<div role="alert" className="rounded-md border border-bad/30 bg-red-50 p-4 text-sm text-bad">
+		<div role="alert" className="rounded-md border border-bad/30 bg-bad-soft p-4 text-sm text-bad">
 			<p>{message}</p>
 			{onRetry && <button className="mt-2 font-medium underline" onClick={onRetry}>Try again</button>}
 		</div>
@@ -122,7 +122,7 @@ export const ErrorBox = ({error, onRetry}: {error: unknown, onRetry?: () => void
 }
 
 export const Notice = ({tone = 'brand', children}: {tone?: 'brand' | 'good' | 'warn', children: ReactNode}) => (
-	<div role="status" className={cx('rounded-md p-3 text-sm', tone == 'good' && 'bg-green-50 text-good', tone == 'warn' && 'bg-amber-50 text-warn', tone == 'brand' && 'bg-blue-50 text-brand-dark')}>
+	<div role="status" className={cx('rounded-md p-3 text-sm', tone == 'good' && 'bg-good-soft text-good', tone == 'warn' && 'bg-warn-soft text-warn', tone == 'brand' && 'bg-brand-soft text-brand-dark')}>
 		{children}
 	</div>
 )

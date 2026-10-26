@@ -32,7 +32,7 @@ export const Layout = () => {
 						<Link key={c.id} to="/companies/$companyId" params={{companyId: c.id}} className="text-muted hover:text-ink [&.active]:font-semibold [&.active]:text-ink">{c.name}</Link>
 					))}
 					{me.data.isProgrammeAdmin && <Link to="/admin" className="text-muted hover:text-ink [&.active]:font-semibold [&.active]:text-ink">Programme admin</Link>}
-					<span className="hidden text-muted sm:inline" aria-label="Signed in as">{me.data.user.email}</span>
+					<span className="hidden text-muted sm:inline"><span className="sr-only">Signed in as </span>{me.data.user.email}</span>
 					<button onClick={signOut} className="font-medium text-brand hover:underline">Sign out</button>
 				</nav>
 			}
