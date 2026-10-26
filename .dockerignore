@@ -1,0 +1,13 @@
+**/node_modules
+**/.env
+**/.env.*
+Backend/Output
+Backend/Tests
+dist
+scraper
+Requirements
+Infra
+*.xlsx
+Backend/Worker/Profiles
+Backend/Worker/try-tenders.mjs
+Backend/Worker/trial.js

@@ -1,0 +1,84 @@
+{
+  "_note": "Trial profile inferred from Care_Software_Funding_2026-10-21.xlsx. Not a real company record. Brendan to correct before the real run.",
+  "company_name": "Care routing trial company",
+  "product_description": "Software that plans and schedules domiciliary (home) care visits. It builds carers' daily runs, optimises routes to cut mileage, fuel and travel time, reduces missed and late visits, and gives care providers per-run cost analytics. Uses optimisation and AI/ML for scheduling. Aimed at home-care providers and at Health and Social Care Trusts (HSC) in Northern Ireland, with GB and Republic of Ireland providers as the growth market. Supports hospital discharge-to-home capacity.",
+  "sectors": [
+    "health and social care",
+    "domiciliary care",
+    "health tech",
+    "AI software",
+    "logistics and route optimisation"
+  ],
+  "customers": [
+    "home-care providers",
+    "HSC Trusts",
+    "NHS trusts and integrated care boards",
+    "local authorities commissioning home care"
+  ],
+  "company": {
+    "based_in": "Northern Ireland",
+    "legal_form": "limited company",
+    "size": "micro/small SME",
+    "stage": "early-stage start-up, pre-revenue or early revenue, product in development (around TRL 5-6)",
+    "invest_ni_client": "unknown"
+  },
+  "regions_served": [
+    "Northern Ireland",
+    "Great Britain",
+    "Republic of Ireland"
+  ],
+  "funding_interests": [
+    "grants",
+    "R&D competitions",
+    "accelerators",
+    "equity",
+    "loans",
+    "innovation vouchers",
+    "advice and support programmes",
+    "tax relief"
+  ],
+  "fit_points": [
+    "domiciliary care routing and scheduling",
+    "faster hospital discharge (delayed discharges)",
+    "HSC Trusts as customers",
+    "private care providers' mileage and fuel costs",
+    "AI/optimisation software R&D"
+  ],
+  "funding_angles": [
+    "Net Zero, transport decarbonisation and fleet efficiency funds (mileage and fuel savings)",
+    "digital health and social care innovation calls",
+    "hospital discharge and care-at-home capacity programmes",
+    "health tech accelerators open to NI companies"
+  ],
+  "exclusions": [
+    "capital equipment grants unrelated to software",
+    "agriculture",
+    "tourism"
+  ],
+  "tender_keywords": [
+    "domiciliary care",
+    "home care",
+    "homecare",
+    "care at home",
+    "care scheduling",
+    "rostering",
+    "scheduling",
+    "route optimisation",
+    "routing",
+    "workforce management",
+    "care management system",
+    "community care",
+    "electronic call monitoring",
+    "care planning",
+    "digital health",
+    "discharge"
+  ],
+  "cpv_prefixes": [
+    "4818",
+    "48814",
+    "4844",
+    "7221",
+    "7226"
+  ],
+  "nuts_regions": []
+}

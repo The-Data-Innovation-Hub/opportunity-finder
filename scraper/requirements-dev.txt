@@ -1,0 +1,10 @@
+# Test-only dependencies (TST-002). Not installed in the production image --
+# see Dockerfile, which only installs requirements.txt.
+#
+# Run tests from this directory (matches how the service itself runs, see
+# Dockerfile):
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   pytest
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1

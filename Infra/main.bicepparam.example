@@ -1,0 +1,19 @@
+using './main.bicep'
+
+// Copy to main.bicepparam (git-ignored). The password is read from the
+// environment so it is never written to a file:
+//   export POSTGRES_ADMIN_PASSWORD=...   (also stored in the app vault)
+param prefix = 'oppfinder'
+param location = 'uksouth'
+param deployApps = false
+param appImage = ''
+param scraperImage = ''
+param appUrl = ''
+param customDomain = 'opportunities.thedatainnovationhub.com'
+// true once its CNAME and TXT records resolve; then bindCustomDomain once the certificate is issued (DEPLOYMENT.md step 9)
+param addCustomDomain = false
+param bindCustomDomain = false
+param emailDomainName = 'thedatainnovationhub.com'
+// true only after the domain shows as Verified in the portal (DEPLOYMENT.md step 2)
+param linkEmailDomain = false
+param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD')

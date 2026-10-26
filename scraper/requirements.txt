@@ -1,0 +1,10 @@
+# scrapling's plain HTTP Fetcher still imports curl_cffi/playwright/browserforge
+# at runtime, which live in the [fetchers] extra rather than the core install --
+# a bare `pip install scrapling` builds fine and then fails on first fetch.
+# Note we deliberately do NOT run `playwright install`: the browser binaries are
+# the ~400MB part, and no browser fetcher is used (see workers/base.py:fetch).
+scrapling[fetchers]==0.4.14
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+certifi==2026.10.19

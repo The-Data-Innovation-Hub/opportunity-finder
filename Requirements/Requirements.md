@@ -1,0 +1,86 @@
+# Backend Requirements
+
+## Scope
+
+- Product/application: Opportunity Finder — weekly funding and tender reports for the companies on the Data Innovation Hub programme
+- Repository and commit: new repository, `~/code/opportunity-finder` (no commits yet)
+- Target environment: local disposable database for development; Azure (test, then production) once approved
+- Requested outcome: reverse-engineer the sample report `Care_Software_Funding_2026-10-21.xlsx` into a multi-tenant service. Each company keeps its own profile; once a week a Claude-driven search finds UK and Ireland funding and public tenders that match the profile; each company views and downloads its own report and is emailed when it is ready.
+- In scope: company profiles, programme administration, weekly search job, opportunity storage, week-on-week "new this week" tracking, Excel report generation matching the sample, portal view and download, ready-notification email
+- Out of scope (first release): bid writing or application drafting, payment/billing, opportunities outside the UK and Ireland, real-time alerts between weekly runs, companies outside the programme signing themselves up
+
+## Evidence: the sample report
+
+`Care_Software_Funding_2026-10-21.xlsx`, generated 21 Oct 2026 for a domiciliary-care routing software company:
+
+| Sheet | Columns | Notes |
+|---|---|---|
+| Funding (37 rows) | Fund, Funder, Source group, Type, Amount, Match funding / intervention rate, Closing date, Days left, Status, New this week, Why it fits, Eligibility notes, Website, Email, Phone, Next step | Days left is a live formula `=IF(I="Closed","Closed",IF(G="","",IF(G<TODAY(),"Closed",G-TODAY())))`; Closing date format `dd mmm yyyy`; header bold on dark blue `1F4E78`; frozen header, autofilter; conditional formatting highlights ≤30 days left, greys Closed, colours Open/Rolling and Opening soon |
+| Top 5 this week | Rank, Fund, Why it's a top pick, Amount, Deadline, Practical steps to apply | Ranked shortlist with numbered steps |
+| Sources (53 URLs) | #, URL | Every page the search relied on |
+
+Observed values: Source group ∈ {Invest NI, UK, InterTradeIreland, NI Health, Other}; Type ∈ {grant, competition (grant), competition, advice, loan, accelerator, equity, tax relief, voucher}; Status ∈ {Open, Rolling, Opening soon, Closed}; New this week ∈ {Yes, No}. Closed items are kept in the report (11 of 37).
+
+## Verified requirements
+
+| ID | Requirement | Source/evidence | Acceptance criteria | Priority |
+|---|---|---|---|---|
+| BEH-001 | Each company on the programme has its own profile describing its product, used to find matching opportunities | User request 22 Oct | A company user can create and edit its profile; the weekly search uses the saved profile | Must |
+| BEH-002 | The search covers UK and Ireland funding sources and public tender portals | User request + scope answer "Funding + tenders" | Report contains a Funding sheet and a Tenders sheet; tenders cover Find a Tender, Contracts Finder, eTendersNI and etenders.gov.ie at minimum; a tender appears only if the company could bid or supply directly (not contracts to deliver services it does not provide) | Must |
+| BEH-003 | The search runs once a week for every active company | User request ("once a week") | A scheduled job produces one report per active company per week without manual action | Must |
+| BEH-004 | Each weekly report reproduces the sample's sheets, columns, formula, formatting and ordering | Sample xlsx | Generated workbook matches the column list, Days-left formula, number formats, frozen header, filter and conditional formatting of the sample | Must |
+| BEH-005 | "New this week" marks opportunities that were not in the company's previous report | Sample column J | An opportunity seen in last week's report shows No; one first seen this week shows Yes | Must |
+| BEH-006 | Companies sign in to view and download their own reports | User request | A signed-in company user sees its report history and downloads any week's xlsx | Must |
+| BEH-007 | Companies are emailed when the week's report is ready, with a short phone-friendly summary | Delivery answer "Portal + email"; Anthony's original prompt step 3 | After a successful run each opted-in user receives one email: subject is a one-line headline (e.g. "Funding report ready: 3 new, 2 closing this month"); body lists what is new this week, the top 3 to act on with amounts and deadlines, anything closing within 30 days, and a link to the portal (no attachment) | Must |
+| SEC-001 | Strict tenant isolation: a company can never see another company's profile, opportunities or reports | Multi-tenant request | Cross-tenant API and download tests return 404 | Must |
+| BEH-010 | Each company chooses its provider and model (from the approved list, DEC-009) and adds its own API key for that provider on a company settings page; its weekly runs are billed to that key. No key, no run. During the free period (DEC-011) every company runs on the programme's key instead | Brendan, 23 Oct 2026 | A company admin can add, replace and remove the key; it is checked with a free API call before it is saved; a company without a valid key gets no Claude run that week and is emailed to add one; the run summary shows "skipped: no valid key" | Must |
+| BEH-011 | The search works the same with any supported provider: our worker runs the web search and page fetch tools itself (search through the chosen search service, pages through the scraper and its domain allow-list), and the provider's model only calls those tools and returns the report through a strict tool schema. A model is offered to companies only after a benchmark run on the trial profile covers at least 28 of the sample's 36 rows, counting rows and Also checked entries (BEH-014) | DEC-007, 23 Oct 2026 | The same profile run on each approved provider produces a report with the same sheets and columns; tools, allow-list and limits are identical across providers; benchmark results are recorded per model | Must |
+| BEH-012 | Programme admins see a KPI card with the weekly and total cost the programme pays to run the service: Brave search and Azure hosting, each shown separately and together | Brendan, 23 Oct 2026 | The admin dashboard shows this week's and total-to-date cost for Brave (queries × configured price, labelled estimate) and for Azure (from Azure Cost Management for the service's resource group), the combined total, and the review date; Brave figures match the sum of the run summaries; Azure figures show the date they are complete to | Must |
+| BEH-013 | Programme admins can stop the search service, and cap it, without a code change | DEC-008 review | An admin setting turns Brave search off: runs then use only the shared funder pages, page reads and supplied notices, and each report notes that search was off; a monthly query cap stops searches once reached and records it in the run summary | Must |
+| BEH-014 | Each report has an "Also checked" sheet listing every standing-checklist scheme and Innovate UK competition reviewed that week but left out, with its region and the reason, so a company sees everything considered and can disagree | Brendan, 23 Oct 2026 (option 1 after four own-search trials) | The worker refuses a report until every checklist scheme and supplied competition has a row or an Also checked entry (returned to the model up to twice); the sheet sits after Top 5 this week | Must |
+| SEC-002 | Tenant API keys are write-only secrets: stored in Azure Key Vault (one secret per company), never in the database, logs, run summaries, emails or API responses; only the worker's managed identity can read them, and only at run time | BEH-010 | The settings page shows only the last four characters, who added the key and when; no API returns the key; programme admins cannot read or set it; every add, replace and remove is audit-logged | Must |
+| DAT-001 | Every opportunity keeps the source URLs that support it | Sample Sources sheet | Each stored opportunity has ≥1 source URL; Sources sheet lists them | Must |
+| DAT-002 | Report history is kept, so earlier weeks remain downloadable | "view and download their own tender reports" | Previous weeks' reports remain listed and downloadable | Must |
+| BEH-008 | Each company chooses one of three region scopes (DEC-013): UK and Ireland (default), UK only (including Northern Ireland), or Ireland and Northern Ireland only | Brendan, 22 Oct 2026; revised 24 Oct 2026 | Profile has a region scope defaulting to UK and Ireland; Northern Ireland is searched in every scope; the weekly search only uses sources and tender portals for the chosen scope; "Ireland and Northern Ireland only" gets no Great Britain or UK-wide rows, "UK only" gets no eTenders or ROI rows | Must |
+| DAT-004 | A standing checklist of named schemes per region (Sources/schemes.json, seeded from Anthony's original prompt, each with its official page) is checked every week. The funders' listing pages and the checklist pages are fetched once a week by the scraper and shared by every company's search as a cached block; pages the scraper cannot read are listed for Claude to fetch. Sector-tagged schemes go only to companies in that sector | Anthony's prompt, 23 Oct 2026; independent test missed rolling Invest NI / InterTradeIreland schemes when relying on search alone | Every applicable checklist scheme appears in the report (any status) or is named in notes as not found | Must |
+| BEH-009 | Each profile holds the company's fit points (what "Why it fits" must reference) and funding angles (company-specific themes to search, e.g. fleet efficiency for mileage and fuel) | Anthony's prompt, 23 Oct 2026 | Profile form has both fields; Claude can draft them from the product description and market for the company to edit | Must |
+| DAT-003 | Sources are held as data, not code: each source records organisation, domain, region (NI / IE / UK), kind (funding, tenders, support), sectors and ingestion method (api, scrapling, claude_fetch) | Brendan, 22 Oct 2026 (find all relevant sites) | Adding a source is a data change; the weekly run builds each company's source list from its regions and sectors | Must |
+
+## Inferred requirements
+
+| ID | Inference | Evidence | Risk if wrong | Confirmation status |
+|---|---|---|---|---|
+| INF-001 | A programme administrator (Data Innovation Hub) adds, renames and pauses companies and invites their users; companies don't self-register | "all the companies on our programme" | Open sign-up would need abuse controls and approval | Confirmed (Brendan, 23 Oct 2026) |
+| INF-002 | A company may have several users (for example founder and bid writer) | Typical team use | Single-user model would be simpler | Confirmed: company admins and members (Brendan, 23 Oct 2026) |
+| INF-003 | Programme admins see run summaries only, not report contents | DEC-003 | — | Confirmed (DEC-003) |
+| INF-004 | Closed opportunities stay in the report for four weeks after closing (closing date, or first week reported Closed when undated), sorted last, then drop out | Brendan, 23 Oct 2026 (84-row cold-start report too long); reconfirmed 26 Oct 2026 after briefly hiding closed rows | — | Confirmed |
+| INF-005 | A company can trigger an extra run on demand (rate-limited), for example after editing its profile | Convenience | Uncapped on-demand runs raise Claude API cost | Rejected: Sunday runs only; profile edits apply from the next Sunday (Brendan, 23 Oct 2026) |
+| INF-006 | Profiles hold commercial-in-confidence product descriptions, not personal or health data | Sample is about a software product | If profiles contain personal data, retention rules change | Pending |
+| SEC-003 | Sign-in and sessions resist misuse: single-use 15-minute links (invitations 7 days), stored only as hashes; the sign-in form never reveals whether an address has an account; HttpOnly SameSite cookies with server-side revocation; state-changing requests only from the app's own origin; rate limits on sign-in | DEC-001 (magic link) and cookie sessions | Account takeover through replayed or leaked links, or cross-site requests | Implemented, pending Brendan's review |
+
+## Assumptions
+
+| ID | Assumption | Impact | Validation needed |
+|---|---|---|---|
+| ASM-001 | Up to ~50 companies on the programme in the first year | Sizes job duration and Claude API spend | Brendan to confirm |
+| ASM-002 | The model cost per company per week is roughly US$2–2.50 on Claude Sonnet 5.5 (other providers to be measured in the benchmark), paid by each company through its own API key (BEH-010). Prompt caching does not cross API accounts, so each company pays for its own copy of the shared funder pages | Companies need to know the cost before adding a key; the programme pays only for Azure hosting and the scraper | Measure on the next trial; show each company its estimated cost per run |
+| ASM-003 | Find a Tender and Contracts Finder expose public APIs (OCDS) that can be queried directly; eTendersNI and etenders.gov.ie are searched via web search | Accuracy and cost of the tenders sheet | Verify each portal's access terms during implementation |
+| ASM-004 | Reports are generated in UK time and the Days-left formula recalculates when opened, as in the sample | Matches sample | None |
+
+## Decisions needed
+
+| ID | Decision | Options and trade-offs | Owner | Status |
+|---|---|---|---|---|
+| DEC-001 | How company users sign in | Emailed one-time link (magic link); no passwords stored. Entra External ID possible later | Brendan | Decided 22 Oct 2026 |
+| DEC-002 | Which Claude model runs the search | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Brendan | Decided 22 Oct 2026 |
+| DEC-003 | Whether programme admins can see company reports | No. Programme admins see run summaries only (run status, counts of funding/tender rows, new this week, errors, cost) to confirm the system works; never profile text, opportunity rows or report files | Brendan | Decided 22 Oct 2026 |
+| DEC-004 | Which day and time the weekly run happens, and when emails go out | Run Sunday night (from 22:00 UK time); emails Monday morning (07:00 UK time) | Brendan | Decided 22 Oct 2026 |
+| DEC-006 | How to read eTendersNI (JavaScript/HTMX listing, CAPTCHA) and the sites that block scripts (research.hscni.net, qub.ac.uk, ulster.ac.uk, northernirelandscreen.co.uk) | Browser fetcher skipped. NI tenders come from Find a Tender (UKN notices, many cross-posted from eTendersNI); blocked sites are respected and left to search results. Later options: Invest NI Tenders Alert email, or ask CPD for a feed | Brendan | Decided 22 Oct 2026 |
+| DEC-007 | Which LLM providers a company's key can be for | Any of the main providers: Anthropic (Claude), OpenAI and Google (Gemini) in the first release; Azure OpenAI, AWS Bedrock and Google Vertex accounts later if companies ask. The search becomes model-neutral (BEH-011) | Brendan | Decided 23 Oct 2026 |
+| DEC-011 | Who pays for the AI model at launch | A free period of about three months: every company's weekly search runs on a dedicated programme Anthropic key (its own workspace with a spend limit, not the Parentalk key), whether or not the company has added its own key; company keys are kept for afterwards. A programme admin sets the end date and a monthly model-spend cap on the admin page; runs past the cap are skipped as "monthly AI cap reached". Companies are told from four weeks before the end, in the portal and the Monday email, then need their own key (BEH-010). Companies see only the end date, never the programme's spend | Brendan | Decided 23 Oct 2026 |
+| DEC-008 | Which web search service the worker uses for every provider | Brave Search API, paid by the programme (about US$5 per 1,000 queries). Review on 25 Jan 2027 (3 months), with the option to stop it if the cost is too high (BEH-013) | Brendan | Decided 23 Oct 2026; review 25 Jan 2027 |
+| DEC-009 | Which models each provider offers | A short approved list per provider (for example Claude Sonnet 5.5), each added only after it passes the benchmark run against the sample report (BEH-011) | Brendan | Pending |
+| DEC-012 | Which address the platform is served at | `https://opportunities.thedatainnovationhub.com`, a CNAME to the API Container App with an Azure-managed certificate. Sign-in links and report emails use it once it is bound; the Container Apps address keeps working | Brendan | Decided 23 Oct 2026 |
+| DEC-013 | Which regions a company can choose | Three scopes, each including Northern Ireland: UK and Ireland, UK only, Ireland and Northern Ireland only. Replaces the three free checkboxes, which let a company search the UK without NI or NI without UK-wide schemes. Stored as the same region list (`NI`, `IE`, `UK`), so no migration; profiles saved earlier are read as the smallest scope that covers them | Brendan | Decided 24 Oct 2026 |
+| DEC-010 | Which address sends sign-in and report emails | Azure Communication Services Email from a verified thedatainnovationhub.com sender (for example reports@thedatainnovationhub.com); DNS records to be added to verify the domain | Brendan | Decided 23 Oct 2026 |
+| DEC-005 | Report retention | 3 months: reports, their opportunity matches and blobs older than 13 weeks are deleted by a scheduled clean-up | Brendan | Decided 22 Oct 2026 |
