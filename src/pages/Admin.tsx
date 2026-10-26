@@ -165,8 +165,9 @@ const Settings = () => {
 		mutationFn: () => api.put<{settings: ServiceSettings}>('/admin/service-settings', {...form, reviewDate: form!.reviewDate.slice(0, 10)}),
 		onSuccess: (d) => { queryClient.setQueryData(['admin', 'settings'], d); queryClient.invalidateQueries({queryKey: ['admin', 'cost']}); setSaved(true) },
 	})
+	// The error check comes first: after a failed first load form stays null.
+	if (settings.error) return <Card title="Search service settings"><ErrorBox error={settings.error} onRetry={() => settings.refetch()} /></Card>
 	if (settings.isPending || !form) return <Card title="Search service settings"><Loading /></Card>
-	if (settings.error) return <Card title="Search service settings"><ErrorBox error={settings.error} /></Card>
 	const update = (patch: Partial<ServiceSettings>) => { setSaved(false); setForm({...form, ...patch}) }
 	return (
 		<Card title="Search service settings">
@@ -223,8 +224,8 @@ const FreePeriod = () => {
 	const removeKey = useMutation({mutationFn: () => api.delete<ProgrammeKey>('/admin/programme-key/credential'), onSuccess: refresh})
 
 	const title = 'Free period (programme pays the AI model)'
+	if (programme.error || models.error) return <Card title={title}><ErrorBox error={programme.error ?? models.error} onRetry={() => { if (programme.error) programme.refetch(); if (models.error) models.refetch() }} /></Card>
 	if (programme.isPending || models.isPending || !form) return <Card title={title}><Loading /></Card>
-	if (programme.error || models.error) return <Card title={title}><ErrorBox error={programme.error ?? models.error} /></Card>
 	const p = programme.data
 	const c = p.credential
 	const modelList = models.data.models
