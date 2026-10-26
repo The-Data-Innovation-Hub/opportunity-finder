@@ -6,8 +6,8 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 
 | Status | Count |
 |---|---:|
-| Proposed | 1 |
-| Approved | 0 |
+| Proposed | 0 |
+| Approved | 1 |
 | In progress | 3 |
 | Blocked | 1 |
 | Verified | 26 |
@@ -43,7 +43,7 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 | INF-003 | Programme admins see summaries only | Verified | `API/Admin.js` returns counts and costs only; no admin access to company routes | `api.test.js` "INF-003…" | |
 | INF-004 | Closed rows kept four weeks | Verified | `Worker/Report/retention.js` | `Tests/retention.test.js` | |
 | INF-005 | On-demand runs | Not applicable | — | — | Rejected (Sunday only) |
-| INF-006 | Profiles hold no personal data | Proposed | — | — | Pending confirmation |
+| INF-006 | Profiles hold no personal data | Approved | Data classification in `Requirements/ArchitectureProposal.md`; profile fields are product, stage, size, sectors, regions | — (a data classification, not a behaviour to test) | Confirmed by Brendan, 26 Oct 2026. Personal data stays limited to user email addresses, which have their own handling |
 | DEC-005 | 13-week retention | Verified | `cleanup` in `Weekly.js` (daily job) | `weekly.test.js` "DEC-005…" | Run costs are kept for the cost card |
 | DEC-011 | Free period on the programme's key, with a monthly AI cap and end-of-period notices | Verified | `0002_ProgrammeKey.sql`, `runClaimed`/`runWeek` in `Worker/Weekly.js`, `/admin/programme-key*` in `API/Admin.js`, `freePeriodFor` in `API/Companies.js`, `weeklyReportEmail`, `src/pages/Admin.tsx` (Free period), `Layout.tsx` banner, `CompanySettings.tsx` | `weekly.test.js` five DEC-011 tests (programme key for all, back to own keys, cap across parallel runs, rejected programme key, email notice); `api.test.js` two DEC-011 tests (key admin-only and never returned or logged; companies see only the end date, cost card counts the cost); browser check on dev data | Not run with a real programme key (none created yet). Second review fixed (below). The spend-limit error wording is unconfirmed; the Anthropic workspace limit stays the backstop |
 | DEC-012 | Platform served at opportunities.thedatainnovationhub.com | Verified | `customDomain`, `addCustomDomain`, `bindCustomDomain` and the managed certificate in `Infra/main.bicep`; `ALLOWED_ORIGINS` set for both addresses | `az bicep build` (no warnings); live 26 Oct 2026: `/health` and `/ready` 200, SNI binding with managed certificate (valid to 25 Apr 2027), `APP_URL` set to the domain | |

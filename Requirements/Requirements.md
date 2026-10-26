@@ -55,7 +55,7 @@ Observed values: Source group ∈ {Invest NI, UK, InterTradeIreland, NI Health, 
 | INF-003 | Programme admins see run summaries only, not report contents | DEC-003 | — | Confirmed (DEC-003) |
 | INF-004 | Closed opportunities stay in the report for four weeks after closing (closing date, or first week reported Closed when undated), sorted last, then drop out | Brendan, 23 Oct 2026 (84-row cold-start report too long); reconfirmed 26 Oct 2026 after briefly hiding closed rows | — | Confirmed |
 | INF-005 | A company can trigger an extra run on demand (rate-limited), for example after editing its profile | Convenience | Uncapped on-demand runs raise Claude API cost | Rejected: Sunday runs only; profile edits apply from the next Sunday (Brendan, 23 Oct 2026) |
-| INF-006 | Profiles hold commercial-in-confidence product descriptions, not personal or health data | Sample is about a software product | If profiles contain personal data, retention rules change | Pending |
+| INF-006 | Profiles hold commercial-in-confidence product descriptions, not personal or health data | Sample is about a software product; Brendan, 26 Oct 2026 | If profiles contain personal data, retention rules change | Confirmed (Brendan, 26 Oct 2026) |
 | SEC-003 | Sign-in and sessions resist misuse: single-use 15-minute links (invitations 7 days), stored only as hashes; the sign-in form never reveals whether an address has an account; HttpOnly SameSite cookies with server-side revocation; state-changing requests only from the app's own origin; rate limits on sign-in | DEC-001 (magic link) and cookie sessions | Account takeover through replayed or leaked links, or cross-site requests | Implemented, pending Brendan's review |
 
 ## Assumptions
