@@ -3,7 +3,7 @@
 First deployed 24 to 26 Oct 2026 by following these steps. Each step changes Azure, so run them from your own terminal, signed in with `az login`, in order. Every step can be run again safely.
 
 - Run every step in the **same terminal tab**: later steps use `POSTGRES_ADMIN_PASSWORD` and the role passwords set in it. Commands sent from elsewhere run in a fresh shell without them.
-- If you have more than one subscription, check `az account show` before each sitting, or add `--subscription <id>` to commands: the CLI default is shared by every terminal and can change under you.
+- Every `az` command below names the Data Innovation Hub subscription (`7f4b2261-9d3d-454a-97b8-132f44da56f2`) with `--subscription`. Keep it on any command you add: there are two subscriptions with the same name, and the CLI default is shared by every terminal and has changed mid-session.
 - A redeploy needs `POSTGRES_ADMIN_PASSWORD` set to the **same** password; a different value changes the server's admin password. Test it first: `PGPASSWORD="$POSTGRES_ADMIN_PASSWORD" psql "host=<postgresHost> dbname=opportunity_finder user=ofadmin sslmode=verify-full sslrootcert=system" -Atc "SELECT 1"`.
 
 ## What gets created
@@ -34,7 +34,7 @@ Schedules are in UTC because Container Apps jobs have no time zone:
 ## 1. Infrastructure (no apps yet)
 
 ```bash
-az group create -n rg-opportunity-finder -l uksouth
+az group create --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -n rg-opportunity-finder -l uksouth
 ```
 
 ```bash
@@ -48,7 +48,7 @@ read -s POSTGRES_ADMIN_PASSWORD && export POSTGRES_ADMIN_PASSWORD
 ```
 
 ```bash
-az deployment group create -g rg-opportunity-finder -n main -f Infra/main.bicep -p Infra/main.bicepparam
+az deployment group create --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n main -f Infra/main.bicep -p Infra/main.bicepparam
 ```
 
 ## 2. Email domain
@@ -56,7 +56,7 @@ az deployment group create -g rg-opportunity-finder -n main -f Infra/main.bicep 
 The deploy creates the email domain; add the records it needs at your DNS provider (GoDaddy for thedatainnovationhub.com). Read them with:
 
 ```bash
-az communication email domain show -g rg-opportunity-finder --email-service-name email-oppfinder -n thedatainnovationhub.com --query verificationRecords -o json
+az communication email domain show --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder --email-service-name email-oppfinder -n thedatainnovationhub.com --query verificationRecords -o json
 ```
 
 Add the `Domain` TXT record (as a new TXT record at `@`, alongside the others) and both DKIM CNAMEs (`selector1-…` and `selector2-…`). Azure checks SPF for `include:spf.protection.outlook.com`, which the domain's Microsoft 365 SPF record already has, so the SPF record usually needs no change. If it ever does, **merge** into the one existing record rather than adding a second; two SPF records make both fail.
@@ -66,7 +66,7 @@ Add the step 9 records (`opportunities` CNAME and `asuid.opportunities` TXT) at 
 When the records resolve, start the checks:
 
 ```bash
-for t in Domain SPF DKIM DKIM2; do az communication email domain initiate-verification -g rg-opportunity-finder --email-service-name email-oppfinder --domain-name thedatainnovationhub.com --verification-type $t; done
+for t in Domain SPF DKIM DKIM2; do az communication email domain initiate-verification --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder --email-service-name email-oppfinder --domain-name thedatainnovationhub.com --verification-type $t; done
 ```
 
 When all four show **Verified** (`--query verificationStates` on the show command above), set `linkEmailDomain = true` in `Infra/main.bicepparam` and deploy again. Azure refuses to link the domain until every check, DKIM2 included, has passed.
@@ -78,7 +78,7 @@ From the repo root, in the same terminal as step 1 (it holds `POSTGRES_ADMIN_PAS
 Let your machine through the server firewall:
 
 ```bash
-MYIP=$(curl -s https://api.ipify.org) && az postgres flexible-server firewall-rule create -g rg-opportunity-finder --name <postgresServerName> --rule-name admin-laptop --start-ip-address $MYIP --end-ip-address $MYIP -o table
+MYIP=$(curl -s https://api.ipify.org) && az postgres flexible-server firewall-rule create --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder --name <postgresServerName> --rule-name admin-laptop --start-ip-address $MYIP --end-ip-address $MYIP -o table
 ```
 
 Two forms of the admin URL, both verifying the server certificate: Node's driver reads `sslrootcert` as a file path, so it gets plain `verify-full` (checked against Node's built-in roots); psql gets `sslrootcert=system`.
@@ -106,29 +106,29 @@ psql "$ADMIN_PSQL_URL" -v api_password="$API_DB_PASSWORD" -v worker_password="$W
 The vaults use Azure RBAC, and subscription Owner does not include secret access. Give yourself write access to the app vault only:
 
 ```bash
-az role assignment create --assignee-object-id $(az ad signed-in-user show --query id -o tsv) --assignee-principal-type User --role "Key Vault Secrets Officer" --scope $(az keyvault show -n <appVaultName> --query id -o tsv) -o none && echo ok
+az role assignment create --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --assignee-object-id $(az ad signed-in-user show --query id -o tsv) --assignee-principal-type User --role "Key Vault Secrets Officer" --scope $(az keyvault show --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -n <appVaultName> --query id -o tsv) -o none && echo ok
 ```
 
 Then, in the step 3 terminal, store the database URLs from the passwords already in the shell:
 
 ```bash
-PGH=<postgresHost>; V=<appVaultName>; az keyvault secret set --vault-name $V -n database-url --value "postgresql://of_api:${API_DB_PASSWORD}@${PGH}:5432/opportunity_finder?sslmode=verify-full" -o none && az keyvault secret set --vault-name $V -n worker-database-url --value "postgresql://of_worker:${WORKER_DB_PASSWORD}@${PGH}:5432/opportunity_finder?sslmode=verify-full" -o none && az keyvault secret set --vault-name $V -n migrate-database-url --value "$ADMIN_URL" -o none && echo ok
+PGH=<postgresHost>; V=<appVaultName>; az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name $V -n database-url --value "postgresql://of_api:${API_DB_PASSWORD}@${PGH}:5432/opportunity_finder?sslmode=verify-full" -o none && az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name $V -n worker-database-url --value "postgresql://of_worker:${WORKER_DB_PASSWORD}@${PGH}:5432/opportunity_finder?sslmode=verify-full" -o none && az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name $V -n migrate-database-url --value "$ADMIN_URL" -o none && echo ok
 ```
 
 ```bash
-az keyvault secret set --vault-name <appVaultName> -n scraper-shared-secret --value "$(openssl rand -hex 32)" -o none && echo ok
+az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name <appVaultName> -n scraper-shared-secret --value "$(openssl rand -hex 32)" -o none && echo ok
 ```
 
 The Brave key is pasted at a hidden prompt. Paste it in one go and press Enter once (a line break in the paste stores a cut-off key); a Brave key is 31 characters:
 
 ```bash
-read -s BRAVE && az keyvault secret set --vault-name <appVaultName> -n brave-search-api-key --value "$BRAVE" -o none && unset BRAVE && echo ok
+read -s BRAVE && az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name <appVaultName> -n brave-search-api-key --value "$BRAVE" -o none && unset BRAVE && echo ok
 ```
 
 ## 5. Roles
 
 ```bash
-Infra/grant-roles.sh <subscription-id> rg-opportunity-finder
+Infra/grant-roles.sh 7f4b2261-9d3d-454a-97b8-132f44da56f2 rg-opportunity-finder
 ```
 
 It creates two custom roles; a new custom role can take a few minutes to become assignable, so the script retries and stops with `FAILED` if it runs out. Re-running is safe.
@@ -138,13 +138,13 @@ It creates two custom roles; a new custom role can take a few minutes to become 
 `az acr build` uploads the build context; `.dockerignore` keeps out every `.env`, `node_modules`, `Backend/Output`, trial profiles, `Infra` and `Requirements`. Use one tag for both images:
 
 ```bash
-TAG=$(date +%Y%m%d%H%M) && az acr build -r <registryName> -t opportunity-finder:$TAG . && az acr build -r <registryName> -t scraper:$TAG scraper && echo $TAG
+TAG=$(date +%Y%m%d%H%M) && az acr build --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -r <registryName> -t opportunity-finder:$TAG . && az acr build --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -r <registryName> -t scraper:$TAG scraper && echo $TAG
 ```
 
 Set `deployApps = true`, and `appImage` and `scraperImage` to the full references (`<registryServer>/opportunity-finder:<tag>`, `<registryServer>/scraper:<tag>`) in `Infra/main.bicepparam`, then deploy again (step 1 terminal):
 
 ```bash
-az deployment group create -g rg-opportunity-finder -n main -f Infra/main.bicep -p Infra/main.bicepparam
+az deployment group create --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n main -f Infra/main.bicep -p Infra/main.bicepparam
 ```
 
 Check `https://<appDefaultHost>/ready` returns `{"ok":true}` (the API reaches the database).
@@ -174,7 +174,7 @@ Until this step the app answers on its Container Apps address (`appUrl` output),
 1. Read the two values the DNS records need:
 
 ```bash
-az deployment group show -g rg-opportunity-finder -n main --query "{host: properties.outputs.appDefaultHost.value, verification: properties.outputs.customDomainVerificationId.value}" -o table
+az deployment group show --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n main --query "{host: properties.outputs.appDefaultHost.value, verification: properties.outputs.customDomainVerificationId.value}" -o table
 ```
 
 2. Wherever DNS for thedatainnovationhub.com is managed, add:
@@ -198,7 +198,7 @@ dig +short TXT asuid.opportunities.thedatainnovationhub.com
 4. Wait until the certificate shows `Succeeded` (usually a few minutes):
 
 ```bash
-az containerapp env certificate list -g rg-opportunity-finder -n cae-oppfinder --managed-certificates-only -o table
+az containerapp env certificate list --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n cae-oppfinder --managed-certificates-only -o table
 ```
 
 5. Set `bindCustomDomain = true` and deploy again. The app is now served at https://opportunities.thedatainnovationhub.com, and sign-in links and report emails use it.
@@ -215,16 +215,17 @@ To see what fired: Azure portal, Monitor, Alerts; or run the rule's query in `lo
 
 ## Each release
 
-1. Build and push the new image (step 6), and set `appImage` to it.
-2. Deploy. This also points the migration job at the new image.
-3. Start the migration job and wait for it to succeed: `az containerapp job start --subscription <id> -g rg-opportunity-finder -n job-oppfinder-migrate` (no `--image`: that flag replaces the job's container for the run, dropping its migrate command and settings, so the run fails with "missing configuration").
+1. Check the **Tests** run on GitHub (Actions tab) passed for the commit you are about to ship. It runs every suite on each push to `main` (`.github/workflows/tests.yml`).
+2. Build and push the new image (step 6), and set `appImage` to it.
+3. Deploy. This also points the migration job at the new image.
+4. Start the migration job and wait for it to succeed: `az containerapp job start --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n job-oppfinder-migrate` (no `--image`: that flag replaces the job's container for the run, dropping its migrate command and settings, so the run fails with "missing configuration").
    If the release adds tables or columns the runtime roles use, its migration grants them when the roles exist (as 0003 and 0005 do); re-running `Infra/database-roles.sql` (step 3) is also safe.
 
 Deploying before migrating is safe only when the new code works on the old schema. When it does not, ship the code that needs the schema in a later release than the migration.
 
 Migrations are forward-only; a fix is a new numbered migration (`Requirements/MigrationPlan.md`).
 
-A migration that tightens a check the old code could still break must run after the deploy, as above. `Requirements/MigrationPlan.md` says when; `0004_RegionScopes.sql` is one.
+A migration that tightens a check the old code could still break must run after the deploy, as above (step 4). `Requirements/MigrationPlan.md` says when; `0004_RegionScopes.sql` is one.
 
 ## Known risks
 

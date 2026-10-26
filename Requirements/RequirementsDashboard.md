@@ -60,6 +60,7 @@ Only use `Verified` when all named verification passes. Keep counts derived from
 | `Backend: npm run test:db` (disposable databases, runtime roles) | 56 pass |
 | `scraper: pytest` | 53 pass |
 | `npm run typecheck`, `vite build` | pass |
+| GitHub Actions `Tests` (`.github/workflows/tests.yml`: all of the above, database tests on Postgres 16) | pass at `2860be3` |
 | `az bicep build Infra/main.bicep` | no warnings |
 | Browser walkthrough on local dev data | sign-in, report, filters, settings save, admin card, phone width |
 

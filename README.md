@@ -68,6 +68,8 @@ cd scraper && .venv/bin/python -m pytest
 npm run typecheck && npm run build
 ```
 
+GitHub Actions runs all of these on every push to `main` and every pull request (`.github/workflows/tests.yml`), with the database tests on a throwaway Postgres 16. Check the run passed before building an image (`Infra/DEPLOYMENT.md`, "Each release"). That Postgres sorts text by `en_US` rules, as Azure does, so a test that compares rows sorted by text should sort with `COLLATE "C"`.
+
 ## Security notes
 
 - Sign-in links are single-use, expire after 15 minutes (invitations 7 days), and are stored only as SHA-256 hashes. The token travels in the URL fragment, so it never reaches a server log.
