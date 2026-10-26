@@ -203,6 +203,16 @@ az containerapp env certificate list -g rg-opportunity-finder -n cae-oppfinder -
 
 5. Set `bindCustomDomain = true` and deploy again. The app is now served at https://opportunities.thedatainnovationhub.com, and sign-in links and report emails use it.
 
+## 10. Alerts and budget
+
+Set `alertEmail` (and `monthlyBudget`, default 50) in `Infra/main.bicepparam` and deploy. This creates:
+
+- `ag-oppfinder`: the action group that emails `alertEmail`. Azure sends a confirmation email to that address when it is added.
+- `alert-oppfinder-failures`: checks the logs every 15 minutes and emails when a job execution fails for good, a company's run fails, a weekly, sign-in or invitation email cannot be sent, the programme key is rejected, or the API returns a 500. A job attempt that fails and then succeeds on retry does not alert (the daily Azure cost job sometimes gets a 429 from Cost Management and recovers). Costs about US$1 a month.
+- `budget-oppfinder-monthly`: Azure spend for the resource group, with emails at 80% and 100% of actual spend and at 100% of forecast. Free. Covers Azure only: AI spend has its own cap on the admin page, and Brave its monthly query cap.
+
+To see what fired: Azure portal, Monitor, Alerts; or run the rule's query in `log-oppfinder`.
+
 ## Each release
 
 1. Build and push the new image (step 6), and set `appImage` to it.

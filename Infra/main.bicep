@@ -45,6 +45,15 @@ param emailDomainName string = 'thedatainnovationhub.com'
 @description('Link the email domain to Communication Services. Azure only allows this once the domain\'s DNS records are verified (Infra/DEPLOYMENT.md, step 2).')
 param linkEmailDomain bool = false
 
+@description('Who is emailed when a job or a company\'s run fails, and at the budget thresholds. Empty creates no alerts or budget.')
+param alertEmail string = ''
+
+@description('Monthly Azure budget for this resource group, in the billing currency. Warnings at 80% and 100% of actual spend, and at 100% forecast.')
+param monthlyBudget int = 50
+
+@description('First month the budget counts from (the first of a month). Keep it unchanged on later deploys.')
+param budgetStartDate string = '2026-10-01'
+
 @description('Postgres administrator login (used only by the migration job and grant scripts).')
 param postgresAdminLogin string = 'ofadmin'
 
@@ -428,6 +437,78 @@ resource migrateJob 'Microsoft.App/jobs@2024-03-01' = if (deployApps) {
 				resources: {cpu: json('0.5'), memory: '1Gi'}
 				env: [{name: 'OPPORTUNITY_FINDER_DATABASE_URL', secretRef: 'migrate-database-url'}]
 			}]
+		}
+	}
+}
+
+// --- Alerts and budget ---------------------------------------------------------------
+
+resource alertGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(alertEmail)) {
+	name: 'ag-${prefix}'
+	location: 'global'
+	tags: tags
+	properties: {
+		groupShortName: take(prefix, 12)
+		enabled: true
+		emailReceivers: [{name: 'programme-admin', emailAddress: alertEmail, useCommonAlertSchema: true}]
+	}
+}
+
+// One email when a job's execution fails for good (a retried attempt that then
+// succeeds does not count), a company's weekly run fails, a weekly or sign-in
+// email cannot be sent, the programme key is rejected, or the API returns a
+// 500. The 30-minute window, checked every 15, allows for log ingestion delay;
+// an event near a window edge can be emailed twice.
+resource failureAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(alertEmail)) {
+	name: 'alert-${prefix}-failures'
+	location: location
+	tags: tags
+	properties: {
+		displayName: 'Opportunity Finder: job or run failed'
+		description: 'A job execution failed, a company run failed, an email could not be sent, the programme key was rejected, or the API returned a 500. Logs: ContainerAppSystemLogs_CL and ContainerAppConsoleLogs_CL in ${logs.name}.'
+		severity: 2
+		enabled: true
+		scopes: [logs.id]
+		evaluationFrequency: 'PT15M'
+		windowSize: 'PT30M'
+		autoMitigate: false
+		criteria: {
+			allOf: [{
+				query: '''
+let failedJobs = ContainerAppSystemLogs_CL
+	| where Reason_s in ('BackoffLimitExceeded', 'DeadlineExceeded')
+	| project TimeGenerated, source = JobName_s, problem = Reason_s;
+let appProblems = ContainerAppConsoleLogs_CL
+	| extend entry = parse_json(Log_s)
+	| extend event = tostring(entry.event)
+	| where event in ('run_failed', 'company_run_error', 'weekly_mail_failed', 'sign_in_mail_failed', 'invitation_mail_failed', 'programme_key_rejected', 'rollback_failed', 'pool_error')
+		or (event == 'error' and toint(entry.status) >= 500)
+	| project TimeGenerated, source = ContainerAppName_s, problem = event;
+union failedJobs, appProblems
+'''
+				timeAggregation: 'Count'
+				operator: 'GreaterThan'
+				threshold: 0
+				failingPeriods: {numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1}
+			}]
+		}
+		actions: {actionGroups: [alertGroup.id]}
+	}
+}
+
+// Azure spend for this resource group only. The AI spend is capped separately
+// in the app (DEC-011), and Brave search by the monthly query cap (BEH-013).
+resource budget 'Microsoft.Consumption/budgets@2023-11-01' = if (!empty(alertEmail)) {
+	name: 'budget-${prefix}-monthly'
+	properties: {
+		category: 'Cost'
+		amount: monthlyBudget
+		timeGrain: 'Monthly'
+		timePeriod: {startDate: budgetStartDate}
+		notifications: {
+			actual80: {enabled: true, operator: 'GreaterThanOrEqualTo', threshold: 80, thresholdType: 'Actual', contactEmails: [alertEmail]}
+			actual100: {enabled: true, operator: 'GreaterThanOrEqualTo', threshold: 100, thresholdType: 'Actual', contactEmails: [alertEmail]}
+			forecast100: {enabled: true, operator: 'GreaterThanOrEqualTo', threshold: 100, thresholdType: 'Forecasted', contactEmails: [alertEmail]}
 		}
 	}
 }
