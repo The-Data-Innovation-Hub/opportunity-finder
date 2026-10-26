@@ -55,6 +55,7 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 		const p = profile.data?.profile
 		if (!p) return
 		const company = (p.details.company ?? {}) as Record<string, string>
+		// oxlint-disable-next-line react/set-state-in-effect -- seeds the editable form once the query loads
 		setForm({description: p.product_description, regions: scopeOf(p.regions).regions, sectors: p.sectors, keywords: p.tender_keywords.join(', '), cpv: p.cpv_prefixes.join(', '),
 			customers: asList(p.details.customers).join('\n'), fitPoints: asList(p.details.fit_points).join('\n'), angles: asList(p.details.funding_angles).join('\n'),
 			exclusions: asList(p.details.exclusions).join('\n'), basedIn: company.based_in ?? '', stage: company.stage ?? '', size: company.size ?? ''})
@@ -63,7 +64,7 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 	const save = useMutation({
 		mutationFn: () => api.put<{profile: Profile}>(`/companies/${companyId}/profile`, {
 			product_description: form.description, regions: form.regions, sectors: form.sectors, tender_keywords: commas(form.keywords), cpv_prefixes: commas(form.cpv),
-			details: {...(profile.data?.profile?.details ?? {}), customers: lines(form.customers), fit_points: lines(form.fitPoints), funding_angles: lines(form.angles),
+			details: {...profile.data?.profile?.details, customers: lines(form.customers), fit_points: lines(form.fitPoints), funding_angles: lines(form.angles),
 				exclusions: lines(form.exclusions), company: {based_in: form.basedIn, stage: form.stage, size: form.size}},
 		}),
 		onSuccess: (data) => {

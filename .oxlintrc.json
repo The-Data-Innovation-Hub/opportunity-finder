@@ -1,0 +1,14 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["react", "typescript", "jsx-a11y", "oxc", "unicorn"],
+	"categories": {"correctness": "error", "suspicious": "warn"},
+	"rules": {
+		"react/rules-of-hooks": "error",
+		"react/exhaustive-deps": "warn",
+		// React 19's JSX transform does not need React in scope.
+		"react/react-in-jsx-scope": "off",
+		// role="status" on a div and role="img" on an svg are the right ARIA here;
+		// <output> and <img> would change the meaning.
+		"jsx-a11y/prefer-tag-over-role": "off"
+	}
+}

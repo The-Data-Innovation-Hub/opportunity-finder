@@ -44,7 +44,7 @@ const Companies = () => {
 	const create = useMutation({mutationFn: () => api.post<{company: AdminCompany}>('/admin/companies', {name}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
 	const setStatus = useMutation({mutationFn: ({id, status}: {id: string, status: string}) => api.patch(`/admin/companies/${id}`, {status}), onSuccess: refresh})
 	const [renaming, setRenaming] = useState<{id: string, name: string} | null>(null)
-	const rename = useMutation({mutationFn: ({id, name}: {id: string, name: string}) => api.patch(`/admin/companies/${id}`, {name}), onSuccess: () => { setRenaming(null); refresh() }})
+	const rename = useMutation({mutationFn: ({id, name: newName}: {id: string, name: string}) => api.patch(`/admin/companies/${id}`, {name: newName}), onSuccess: () => { setRenaming(null); refresh() }})
 
 	return (
 		<Card title="Companies">
@@ -63,6 +63,7 @@ const Companies = () => {
 									<td className="py-2 pr-3 font-medium">
 										{renaming?.id == c.id ? (
 											<form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); rename.mutate(renaming) }}>
+												{/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the user just pressed Rename, so focus moves into the field it opened */}
 												<Input aria-label={`New name for ${c.name}`} value={renaming.name} maxLength={200} autoFocus
 													onChange={(e) => setRenaming({id: c.id, name: e.target.value})} onKeyDown={(e) => { if (e.key == 'Escape') setRenaming(null) }} />
 												<Button type="submit" busy={rename.isPending} disabled={!renaming.name.trim() || renaming.name.trim() == c.name}>Save</Button>
@@ -160,6 +161,7 @@ const Settings = () => {
 	const settings = useQuery({queryKey: ['admin', 'settings'], queryFn: () => api.get<{settings: ServiceSettings}>('/admin/service-settings')})
 	const [form, setForm] = useState<ServiceSettings | null>(null)
 	const [saved, setSaved] = useState(false)
+	// oxlint-disable-next-line react/set-state-in-effect -- seeds the editable form once the query loads
 	useEffect(() => { if (settings.data) setForm(settings.data.settings) }, [settings.data])
 	const save = useMutation({
 		mutationFn: () => api.put<{settings: ServiceSettings}>('/admin/service-settings', {...form, reviewDate: form!.reviewDate.slice(0, 10)}),
@@ -206,6 +208,7 @@ const FreePeriod = () => {
 	const [choice, setChoice] = useState('')
 	const [apiKey, setApiKey] = useState('')
 	const [editing, setEditing] = useState(false)
+	// oxlint-disable-next-line react/set-state-in-effect -- seeds the editable form once the query loads
 	useEffect(() => { if (programme.data) setForm({until: programme.data.freePeriodUntil ?? '', cap: programme.data.monthlyCapUsd}) }, [programme.data])
 	const refresh = (d: ProgrammeKey) => { queryClient.setQueryData(['admin', 'programme-key'], d); queryClient.invalidateQueries({queryKey: ['admin', 'cost']}) }
 	const saveSettings = useMutation({
