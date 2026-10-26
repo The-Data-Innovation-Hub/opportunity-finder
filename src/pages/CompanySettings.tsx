@@ -82,7 +82,7 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 		<Card title="Company profile" action={p && <span className="text-xs text-muted">Version {p.version}, saved {formatDate(p.created_at)}</span>}>
 			<form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
 				<p className="text-sm text-muted">The weekly search reads this to judge what fits. Changes apply from the next Sunday run.</p>
-				<Field label="What does your product do, and for whom?" hint="20 to 5,000 characters. Include the problem it solves, who buys it and how far along it is.">
+				<Field label="What does your product do, and for whom?" hint="20 to 5,000 characters. Include the problem it solves, who buys it and how far along it is. Describe the product, not people: no names, contact details or health information.">
 					{(id, d) => <Textarea id={id} aria-describedby={d} rows={5} required minLength={20} maxLength={5000} disabled={!isAdmin} value={form.description} onChange={set('description')} />}
 				</Field>
 				<fieldset>
@@ -114,7 +114,7 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 				<div className="grid gap-4 sm:grid-cols-2">
 					<Field label="Sectors" hint="Choose all that apply, up to 20.">{(id, d) => <MultiSelect id={id} describedBy={d} label="Sectors" options={SECTORS} max={20} disabled={!isAdmin} value={form.sectors} onChange={(sectors) => { setSaved(false); setForm({...form, sectors}) }} />}</Field>
 					<Field label="Tender keywords" hint="Words a matching tender would use, separated by commas.">{(id, d) => <Input id={id} aria-describedby={d} disabled={!isAdmin} value={form.keywords} onChange={set('keywords')} />}</Field>
-					<Field label="Customers" hint="One per line.">{(id, d) => <Textarea id={id} aria-describedby={d} rows={3} disabled={!isAdmin} value={form.customers} onChange={set('customers')} />}</Field>
+					<Field label="Customers" hint="Organisations, not people. One per line.">{(id, d) => <Textarea id={id} aria-describedby={d} rows={3} disabled={!isAdmin} value={form.customers} onChange={set('customers')} />}</Field>
 					<Field label="Strongest fit points" hint="One per line.">{(id, d) => <Textarea id={id} aria-describedby={d} rows={3} disabled={!isAdmin} value={form.fitPoints} onChange={set('fitPoints')} />}</Field>
 					<Field label="Funding angles to look for" hint="One per line, e.g. net zero fleet funds.">{(id, d) => <Textarea id={id} aria-describedby={d} rows={3} disabled={!isAdmin} value={form.angles} onChange={set('angles')} />}</Field>
 					<Field label="Leave out" hint="One per line.">{(id, d) => <Textarea id={id} aria-describedby={d} rows={3} disabled={!isAdmin} value={form.exclusions} onChange={set('exclusions')} />}</Field>
