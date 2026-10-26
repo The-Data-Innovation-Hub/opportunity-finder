@@ -33,7 +33,7 @@ export const CostCard = ({cost}: {cost: ServiceCost}) => {
 					sub={azure ? `${money(azure.total, azure.currency)} total · billed to ${formatDate(azure.collectedTo)}` : 'Not collected yet'} />
 			</div>
 			<p className="mt-3 text-xs text-muted">
-				Brave queries this month: {cost.brave.monthQueries.toLocaleString('en-GB')} of {cost.brave.monthlyQueryCap.toLocaleString('en-GB')} cap.
+				Brave queries this month: {cost.brave.monthQueries.toLocaleString('en-GB')} of {cost.brave.monthlyQueryCap.toLocaleString('en-GB')} cap.{' '}
 				{model.freePeriodUntil
 					? `The programme pays the AI model for every company until ${formatDate(model.freePeriodUntil)}; after that each company's own key is its own bill.`
 					: "Model costs are each company's own bill and are not included."}
