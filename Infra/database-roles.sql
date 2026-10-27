@@ -27,6 +27,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON company_llm_credential TO of_api;
 GRANT SELECT, INSERT ON audit_event TO of_api;
 GRANT SELECT, UPDATE (search_enabled, brave_price_per_1000_usd, monthly_query_cap, review_date, free_period_until, programme_model_monthly_cap_usd, updated_by, updated_at) ON service_setting TO of_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON programme_llm_credential TO of_api;
+GRANT SELECT, INSERT, UPDATE ON company_billing TO of_api;
+GRANT SELECT, INSERT ON stripe_event TO of_api;
 GRANT SELECT ON programme_admin, approved_model, weekly_gather, search_run, report, report_row, azure_cost_daily TO of_api;
 
 -- Worker
@@ -34,6 +36,7 @@ GRANT SELECT ON company, company_profile, company_membership, approved_model, se
 GRANT SELECT (id, email, disabled_at) ON app_user TO of_worker;
 GRANT SELECT, UPDATE (status, checked_at) ON company_llm_credential TO of_worker;
 GRANT SELECT, UPDATE (status, checked_at) ON programme_llm_credential TO of_worker;
+GRANT SELECT ON company_billing TO of_worker;
 GRANT SELECT, INSERT, UPDATE, DELETE ON weekly_gather, search_run, report, report_row, notification, azure_cost_daily TO of_worker;
 GRANT SELECT (expires_at), DELETE ON sign_in_token TO of_worker;
 GRANT SELECT (expires_at, revoked_at), DELETE ON user_session TO of_worker;

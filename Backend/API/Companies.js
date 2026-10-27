@@ -19,7 +19,7 @@ export const membershipOf = async (db, userId, companyId) => {
 	return rows[0] ?? null
 }
 
-const requireMember = (pool) => async (request, response, next) => {
+export const requireMember = (pool) => async (request, response, next) => {
 	const companyId = uuidParam(request.params.companyId)
 	const membership = await membershipOf(pool, request.user.id, companyId)
 	if (!membership) throw notFound()
@@ -28,7 +28,7 @@ const requireMember = (pool) => async (request, response, next) => {
 	next()
 }
 
-const requireCompanyAdmin = (request, response, next) => {
+export const requireCompanyAdmin = (request, response, next) => {
 	if (request.membership.role != 'company_admin') throw forbidden()
 	next()
 }

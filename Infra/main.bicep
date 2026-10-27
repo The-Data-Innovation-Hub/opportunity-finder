@@ -45,6 +45,15 @@ param emailDomainName string = 'thedatainnovationhub.com'
 @description('Link the email domain to Communication Services. Azure only allows this once the domain\'s DNS records are verified (Infra/DEPLOYMENT.md, step 2).')
 param linkEmailDomain bool = false
 
+@description('DEC-014: turn on Stripe billing. Needs the stripe-secret-key and stripe-webhook-secret secrets in the app vault first (DEPLOYMENT.md, "Billing").')
+param enableBilling bool = false
+
+@description('Stripe price ids (price_...) for the four plans; not secret.')
+param stripePriceSubscriptionMonth string = ''
+param stripePriceSubscriptionYear string = ''
+param stripePriceOwnKeyMonth string = ''
+param stripePriceOwnKeyYear string = ''
+
 @description('Who is emailed when a job or a company\'s run fails, and at the budget thresholds. Empty creates no alerts or budget.')
 param alertEmail string = ''
 
@@ -271,6 +280,21 @@ var senderAddress = 'no-reply@${emailDomainName}'
 // A Container Apps secret read from the app vault by the given identity.
 func appSecret(name string, identityId string, vaultUri string) object => {name: name, keyVaultUrl: '${vaultUri}secrets/${name}', identity: identityId}
 
+// DEC-014: the API's Stripe settings, only when billing is on (the vault
+// secrets must exist before a deployment can reference them).
+var billingSecrets = enableBilling ? [
+	appSecret('stripe-secret-key', apiIdentity.id, appVault.properties.vaultUri)
+	appSecret('stripe-webhook-secret', apiIdentity.id, appVault.properties.vaultUri)
+] : []
+var billingEnv = enableBilling ? [
+	{name: 'STRIPE_SECRET_KEY', secretRef: 'stripe-secret-key'}
+	{name: 'STRIPE_WEBHOOK_SECRET', secretRef: 'stripe-webhook-secret'}
+	{name: 'STRIPE_PRICE_SUBSCRIPTION_MONTH', value: stripePriceSubscriptionMonth}
+	{name: 'STRIPE_PRICE_SUBSCRIPTION_YEAR', value: stripePriceSubscriptionYear}
+	{name: 'STRIPE_PRICE_OWN_KEY_MONTH', value: stripePriceOwnKeyMonth}
+	{name: 'STRIPE_PRICE_OWN_KEY_YEAR', value: stripePriceOwnKeyYear}
+] : []
+
 var commonEnv = [
 	{name: 'NODE_ENV', value: 'production'}
 	{name: 'APP_URL', value: publicUrl}
@@ -301,7 +325,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
 					: {name: customDomain, bindingType: 'Disabled'}]
 			}
 			registries: [{server: registry.properties.loginServer, identity: apiIdentity.id}]
-			secrets: [appSecret('database-url', apiIdentity.id, appVault.properties.vaultUri)]
+			secrets: concat([appSecret('database-url', apiIdentity.id, appVault.properties.vaultUri)], billingSecrets)
 		}
 		template: {
 			containers: [{
@@ -313,7 +337,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
 					{name: 'OPPORTUNITY_FINDER_DATABASE_URL', secretRef: 'database-url'}
 					{name: 'TRUST_PROXY', value: '1'}
 					{name: 'ALLOWED_ORIGINS', value: allowedOrigins}
-				])
+				], billingEnv)
 				probes: [
 					{type: 'Liveness', httpGet: {path: '/health', port: 3001}, periodSeconds: 30}
 					{type: 'Readiness', httpGet: {path: '/ready', port: 3001}, periodSeconds: 15}
@@ -483,7 +507,8 @@ let failedJobs = ContainerAppSystemLogs_CL
 let appProblems = ContainerAppConsoleLogs_CL
 	| extend entry = parse_json(Log_s)
 	| extend event = tostring(entry.event)
-	| where event in ('run_failed', 'company_run_error', 'weekly_mail_failed', 'sign_in_mail_failed', 'invitation_mail_failed', 'programme_key_rejected', 'rollback_failed', 'pool_error')
+	| where event in ('run_failed', 'company_run_error', 'weekly_mail_failed', 'sign_in_mail_failed', 'invitation_mail_failed', 'programme_key_rejected', 'rollback_failed', 'pool_error',
+		'billing_duplicate_subscription', 'billing_unknown_customer', 'billing_unknown_price')
 		or (event == 'error' and toint(entry.status) >= 500)
 	| project TimeGenerated, source = ContainerAppName_s, problem = event;
 union failedJobs, appProblems

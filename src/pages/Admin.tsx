@@ -33,7 +33,11 @@ const Cost = () => {
 
 const runTone = (status: string | null) => status == 'succeeded' ? 'good' : status == 'failed' ? 'bad' : status == 'skipped' ? 'warn' : 'neutral'
 const SKIP_REASONS: Record<string, string> = {no_key: 'no API key', invalid_key: 'key rejected', out_of_credit: 'out of credit', company_paused: 'paused', no_profile: 'no profile',
-	programme_key_problem: 'programme key not working', programme_budget_reached: 'monthly AI cap reached'}
+	programme_key_problem: 'programme key not working', programme_budget_reached: 'monthly AI cap reached', no_plan: 'no plan'}
+// DEC-014: the badge for a company's plan; card details and amounts stay with Stripe.
+const LIVE = ['trialing', 'active', 'past_due']
+const planBadge = (plan: string | null, status: string | null) => !plan ? <Badge>No plan</Badge>
+	: <Badge tone={!LIVE.includes(status ?? '') ? 'bad' : status == 'past_due' ? 'warn' : 'good'}>{plan == 'subscription' ? 'Subscription' : 'Own key'}{status && status != 'active' ? `: ${status.replace('_', ' ')}` : ''}</Badge>
 
 const Companies = () => {
 	const queryClient = useQueryClient()
@@ -55,7 +59,7 @@ const Companies = () => {
 				<div className="overflow-x-auto">
 					<table className="w-full text-left text-sm">
 						<thead className="border-b border-line text-xs uppercase text-muted">
-							<tr><th scope="col" className="py-2 pr-3">Company</th><th scope="col" className="pr-3">People</th><th scope="col" className="pr-3">Set-up</th><th scope="col" className="pr-3">Last run</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
+							<tr><th scope="col" className="py-2 pr-3">Company</th><th scope="col" className="pr-3">People</th><th scope="col" className="pr-3">Set-up</th><th scope="col" className="pr-3">Plan</th><th scope="col" className="pr-3">Last run</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
 						</thead>
 						<tbody className="divide-y divide-line">
 							{companies.data.companies.map((c) => (
@@ -76,6 +80,7 @@ const Companies = () => {
 										<Badge tone={c.has_profile ? 'good' : 'warn'}>{c.has_profile ? 'Profile' : 'No profile'}</Badge>
 										<Badge tone={c.key_status == 'valid' ? 'good' : 'warn'}>{c.key_status == 'valid' ? 'Key working' : c.key_status ? `Key ${c.key_status.replace('_', ' ')}` : 'No key'}</Badge>
 									</td>
+									<td className="pr-3">{planBadge(c.billing_plan, c.billing_status)}</td>
 									<td className="pr-3">
 										{c.last_run_status ? <><Badge tone={runTone(c.last_run_status)}>{c.last_run_status}{c.last_run_skip_reason ? `: ${SKIP_REASONS[c.last_run_skip_reason] ?? c.last_run_skip_reason}` : ''}</Badge> <span className="text-xs text-muted">{formatDate(c.last_run_week)}</span></> : <span className="text-muted">Not run yet</span>}
 									</td>
@@ -199,6 +204,9 @@ const keyBadge = (p: ProgrammeKey) => !p.credential.configured ? <Badge tone="wa
 	: p.credential.status == 'invalid' ? <Badge tone="bad">Key rejected: replace it</Badge>
 	: <Badge tone="bad">Out of credit: top up the Anthropic account</Badge>
 
+// A subscriber's AI cost a month, with room over a typical US$15 to US$20, for the cap warning.
+const SUBSCRIBER_USD = 30
+
 const FreePeriod = () => {
 	const queryClient = useQueryClient()
 	const programme = useQuery({queryKey: ['admin', 'programme-key'], queryFn: () => api.get<Responses['GET /admin/programme-key']>('/admin/programme-key')})
@@ -238,8 +246,10 @@ const FreePeriod = () => {
 			<Badge tone={active ? 'good' : 'neutral'}>{active ? `On until ${formatDate(p.freePeriodUntil)}` : 'Off'}</Badge></span>}>
 			<p className="text-sm text-muted">
 				Until the end date, every company's weekly search runs on the programme's Anthropic key, whether or not it has added its own; their keys are kept for afterwards.
+				After it, subscribers stay on this key and the others use their own key with the platform fee (DEC-014); a company with neither plan is paused.
 				Companies are told from four weeks before the end, in the portal and the Monday email. Use a key made only for Opportunity Finder, ideally in its own Anthropic workspace with a spend limit.
 			</p>
+			{p.subscribers * SUBSCRIBER_USD > p.monthlyCapUsd && <div className="mt-3"><Notice tone="warn">{p.subscribers} {p.subscribers == 1 ? 'company subscribes' : 'companies subscribe'}. At about US${SUBSCRIBER_USD} each a month, the monthly cap of US${p.monthlyCapUsd} can run out and pause their reports: raise it to at least US${p.subscribers * SUBSCRIBER_USD}.</Notice></div>}
 			{active && !(c.configured && c.status == 'valid') && <div className="mt-3"><Notice tone="warn">The free period is on but there is no working key, so this week's runs will be skipped.</Notice></div>}
 			{c.configured && (
 				<dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">

@@ -7,10 +7,11 @@ import {accessLog, errorHandler, notFound, securityHeaders} from './Library.js'
 import {authRoutes, loadSession, requireSameOrigin, requireUser} from './Auth.js'
 import {companyRoutes} from './Companies.js'
 import {adminRoutes} from './Admin.js'
+import {billingRoutes, stripeWebhook} from './Billing.js'
 
 export const JSON_BODY_LIMIT = '64kb'
 
-export const createApp = ({pool, mailer, secrets, blobs, checkKey, appUrl, allowedOrigins = [appUrl], secureCookies = true, trustProxy = false, frontendDir, rateLimits, now}) => {
+export const createApp = ({pool, mailer, secrets, blobs, checkKey, billing = null, appUrl, allowedOrigins = [appUrl], secureCookies = true, trustProxy = false, frontendDir, rateLimits, now}) => {
 	const app = express()
 	app.disable('x-powered-by')
 	app.set('trust proxy', trustProxy)
@@ -28,12 +29,14 @@ export const createApp = ({pool, mailer, secrets, blobs, checkKey, appUrl, allow
 
 	const api = express.Router()
 	api.use(securityHeaders)
+	api.use(stripeWebhook({pool, billing}))
 	api.use(express.json({limit: JSON_BODY_LIMIT}))
 	api.use(requireSameOrigin(allowedOrigins))
 	api.use(loadSession(pool))
 	api.use(authRoutes({pool, mailer, appUrl, secureCookies, limits: rateLimits}))
 	api.use(requireUser)
 	api.use(companyRoutes({pool, secrets, blobs, mailer, appUrl, checkKey}))
+	api.use(billingRoutes({pool, billing, appUrl, now}))
 	api.use(adminRoutes({pool, secrets, mailer, appUrl, checkKey, now}))
 	api.use(() => { throw notFound() })
 	app.use('/api', api)

@@ -8,9 +8,9 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 |---|---:|
 | Proposed | 0 |
 | Approved | 1 |
-| In progress | 3 |
+| In progress | 5 |
 | Blocked | 1 |
-| Verified | 26 |
+| Verified | 29 |
 | Not applicable | 1 |
 
 ## Requirements
@@ -26,15 +26,18 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 | BEH-007 | Email when the week's report is ready | In progress | `sendWeeklyEmails` in `Weekly.js`, `Services/Mail.js` | `weekly.test.js` "BEH-007…once per member per report" | ACS sending verified on Azure 24 Oct 2026 (sign-in email from no-reply@thedatainnovationhub.com, domain Verified for Domain, SPF, DKIM, DKIM2); weekly report email sent on Azure 26 Oct 2026 (emails job, notification `sent`) |
 | BEH-008 | Company chooses a region scope | Verified | `REGION_SCOPES` and `scopeRegions` in `Worker/Research/search.js`, `profileFromBody` in `API/Companies.js`, profile form | `Tests/Db/schema.test.js` "BEH-008…"; `api.test.js` "BEH-001…" rejects `FR`, `NI`, `UK`, `IE`+`UK`; `research.test.js` "DEC-013…" | |
 | BEH-009 | Fit points and funding angles in the profile | Verified | `details` JSON, `toWorkerProfile`, profile form | `Tests/search-inputs.test.js` | |
-| BEH-010 | Company chooses provider and model and adds its own key | Verified | `API/Companies.js` llm-credential, `src/pages/CompanySettings.tsx` | `api.test.js` "SEC-002…"; `weekly.test.js` "BEH-010 a rejected key…", "DEC-011 after the free period, companies are back on their own keys" | Anthropic only until DEC-009 |
+| BEH-010 | Company chooses provider and model and adds its own key | Verified | `API/Companies.js` llm-credential, `src/pages/CompanySettings.tsx` | `api.test.js` "SEC-002…"; `weekly.test.js` "BEH-010 a rejected key…", "DEC-011 and DEC-014 after the free period, an own-key plan runs on the company's own key" | Anthropic only until DEC-009 |
 | BEH-011 | Works the same with any supported provider | In progress | `Worker/Research/loop.js`, `tools.js`, `Providers/` | `Tests/research.test.js`, `Tests/anthropic.test.js` | OpenAI and Google adapters not built (need test keys) |
 | BEH-012 | KPI card: weekly and total Brave and Azure cost | Verified | `GET /admin/service-cost`, `Worker/AzureCost.js`, `src/components/CostCard.tsx` | `api.test.js` "BEH-012 the cost card…"; `weekly.test.js` "BEH-012 Azure daily cost…"; browser check | Cost Management API call untested against Azure |
 | BEH-013 | Admins can stop and cap search without a code change | Verified | `service_setting`, `PUT /admin/service-settings`, per-run search reservation in `runWeek`, shared allowance in `Research/tools.js` | `api.test.js` "BEH-013…audited"; `weekly.test.js` "BEH-013…no web_search tool", "…cannot together pass the monthly search cap", "…failed run still records the searches and model work it was billed for"; `research.test.js` "BEH-013 a shared allowance…" | Reservations are per job process; two weekly jobs started at once could each reserve the same remainder |
 | BEH-014 | "Also checked" sheet | Verified | `workbook.js`, `report.also_checked`, report page | `workbook.test.js` BEH-014 | |
 | BEH-015 | First report without waiting for Sunday | Verified | `runFirstReports` in `Worker/Weekly.js`, `first-reports` job in `Infra/main.bicep`, first-report card in `src/pages/CompanyReport.tsx` | `Tests/Db/first-report.test.js` (6 tests), `CompanyReport.test.tsx` BEH-015 | New job needs a Bicep deploy |
+| BEH-016 | Plans after the free period, bought on Stripe Checkout | In progress | `API/Billing.js`, `Services/Billing.js`, `Services/Plans.js`, `company_billing` (0006), Plan card in `src/pages/CompanySettings.tsx`, plan column and cap warning in `src/pages/Admin.tsx` | `Tests/Db/billing.test.js` BEH-016 (9 tests); `CompanySettings.test.tsx` BEH-016 (4 tests); contract capture | Verified against the in-memory Stripe stand-in; a Stripe test-mode run end to end is still to do (DEPLOYMENT.md, "Billing") |
+| BEH-017 | Who pays for a run follows the plan after the free period | Verified | `payerFor` in `runCompanies` (`Worker/Weekly.js`), `no_plan` skip reason (0006) | `Tests/Db/billing-runs.test.js` (5 tests); `weekly.test.js` "DEC-011 and DEC-014 after the free period…"; `CompanySettings.test.tsx` BEH-017 | |
 | SEC-001 | Strict tenant isolation | Verified | Membership check in every company query; composite tenant FKs | `api.test.js` two SEC-001 tests; `schema.test.js` SEC-001 | |
 | SEC-002 | Keys are write-only, Key Vault only | Verified | `Services/SecretStore.js`, separate keys vault in `main.bicep` | `api.test.js` "SEC-002…never returned or logged" (checks responses, DB row and every log line) | Verified with the in-memory store; Key Vault untested |
 | SEC-003 | Sign-in and sessions resist misuse | Verified | `API/Auth.js`, `requireSameOrigin` | `api.test.js` DEC-001 and SEC-003 tests (single use, expiry, no enumeration, revocation, origin) | Rate limits are per replica |
+| SEC-004 | Plans change only through signed Stripe events | In progress | `stripeWebhook` and `storeSubscription` in `API/Billing.js`, `stripe_event` (0006), Stripe secrets in `Infra/main.bicep` | `billing.test.js` SEC-004 (4 tests: forged and tampered signatures, replay, state read from Stripe, stale and duplicate subscriptions); `Tests/billing.test.js` | Signature check is Stripe's own code; live webhook delivery untested until Stripe is set up |
 | DAT-001 | Every opportunity keeps its source URLs | Verified | `source_urls` required by the strict `SUBMIT_REPORT` schema; stored in `report_row.row_data` | `anthropic.test.js` (strict schema); run8 output | |
 | DAT-002 | Report history stays downloadable | Verified | `report` per week, reports list and history panel | `api.test.js` report tests; `weekly.test.js` week 2 | Kept 13 weeks (DEC-005) |
 | DAT-003 | Sources are data, not code | Verified | `Worker/Sources/catalogue.json` | earlier source tests in `Tests/` | |
