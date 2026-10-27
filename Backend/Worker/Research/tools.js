@@ -5,8 +5,11 @@
 // the provider, so they hold the same way for everyone.
 import {braveSearch, onDomains} from '../Sources/brave.js'
 import {scrapePage} from '../Sources/scraper.js'
+import {readEuTopic} from '../Sources/eu.js'
 
 export const LIMITS = {searches: 20, fetches: 30}
+// EU call pages need a browser; their text comes from the portal's data.
+const readPage = async (url) => (await readEuTopic(url)) ?? scrapePage(url)
 const MAX_PAGE_TEXT = 8000
 const MAX_PAGE_LINKS = 40
 const THIN_TEXT = 300
@@ -39,7 +42,7 @@ export const WEB_FETCH = {
 // budget: optional {limit, used}, shared by all of one company's regional
 // passes: the searches the weekly job reserved for this run against the
 // programme's monthly cap (BEH-013). Counted here, at the point of use.
-export const createToolRunner = ({domains, searchEnabled = true, limits = LIMITS, budget, search = braveSearch, fetchPage = scrapePage}) => {
+export const createToolRunner = ({domains, searchEnabled = true, limits = LIMITS, budget, search = braveSearch, fetchPage = readPage}) => {
 	const used = {searches: 0, fetches: 0}
 	// Inputs are not schema-enforced (only the report tool is strict), so check them here.
 	const webSearch = async ({query, site} = {}) => {
