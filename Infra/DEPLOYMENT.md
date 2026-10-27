@@ -232,10 +232,11 @@ From 1 Feb 2027 each company needs a plan: a subscription (£30 a month or £300
    - switching between the four prices.
 
    Set the return link to `https://opportunities.thedatainnovationhub.com`.
-5. **Webhook.** Under Developers → Webhooks, add the endpoint `https://opportunities.thedatainnovationhub.com/api/stripe/webhook` with these events:
-   - `checkout.session.completed`;
+5. **Webhook.** Under Developers → Webhooks, add the endpoint `https://opportunities.thedatainnovationhub.com/api/stripe/webhook`, with API version `2026-09-30.endive` (the version pinned in `Backend/Services/Billing.js`) and these events:
+   - `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`;
    - `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`;
-   - `invoice.paid` and `invoice.payment_failed`.
+   - `invoice.paid` and `invoice.payment_failed`;
+   - `charge.dispute.created`, `radar.early_fraud_warning.created` and `charge.refunded`.
 
    Copy its signing secret (`whsec_...`).
 6. **Restricted key.** Under Developers → API keys, create a restricted key with these permissions:
@@ -247,6 +248,9 @@ From 1 Feb 2027 each company needs a plan: a subscription (£30 a month or £300
    | Customer portal | Write |
    | Subscriptions | Read |
    | Prices | Read |
+   | Charges | Read |
+
+   Use a separate key for test mode and for live mode.
 
 7. **Secrets.** Store the key and the signing secret in the app vault. Each is pasted at a hidden prompt, in one go:
 
@@ -273,7 +277,11 @@ Then replace both secrets and the price ids with the live ones and deploy again.
 Billing changes are logged without amounts or card details. The failures alert also fires on these events:
 - `billing_duplicate_subscription`: a company has two live subscriptions; refund one in Stripe;
 - `billing_unknown_customer`;
-- `billing_unknown_price`.
+- `billing_unknown_price`;
+- `billing_dispute`: a customer disputed a payment. Respond to it in Stripe (Payments → Disputes) before its deadline;
+- `billing_fraud_warning`: the card network reported a payment as likely fraud. Consider refunding it and cancelling the plan in Stripe before a dispute arrives.
+
+Refunds are recorded in the company's audit log (`billing.refund`) without an alert.
 
 **Release with migration 0006.** The new code needs migration 0006, so migrate before switching the API and the other jobs:
 1. Run `az containerapp job update --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n job-oppfinder-migrate --image <new image>`.

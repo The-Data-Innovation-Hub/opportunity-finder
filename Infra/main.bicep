@@ -508,7 +508,7 @@ let appProblems = ContainerAppConsoleLogs_CL
 	| extend entry = parse_json(Log_s)
 	| extend event = tostring(entry.event)
 	| where event in ('run_failed', 'company_run_error', 'weekly_mail_failed', 'sign_in_mail_failed', 'invitation_mail_failed', 'programme_key_rejected', 'rollback_failed', 'pool_error',
-		'billing_duplicate_subscription', 'billing_unknown_customer', 'billing_unknown_price')
+		'billing_duplicate_subscription', 'billing_unknown_customer', 'billing_unknown_price', 'billing_dispute', 'billing_fraud_warning')
 		or (event == 'error' and toint(entry.status) >= 500)
 	| project TimeGenerated, source = ContainerAppName_s, problem = event;
 union failedJobs, appProblems

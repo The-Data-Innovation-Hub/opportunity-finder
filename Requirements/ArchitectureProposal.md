@@ -140,18 +140,19 @@ From 1 Feb 2027 each company needs one of two paid plans to keep its weekly runs
 - **Products and prices:** two products with four recurring prices, all GBP and tax-exclusive. The price ids go in Bicep parameters, not code.
 - **Stripe Tax:** turned on with the UK VAT number. Checkout collects a billing address and an optional VAT number, so Irish VAT-registered businesses are reverse-charged.
 - **Customer portal:** lets the customer change their card, switch between the four prices, cancel at the end of the period and download invoices.
-- **Webhook endpoint:** `https://opportunities.thedatainnovationhub.com/api/stripe/webhook`.
-- **Secrets:** a restricted API key (Checkout and portal sessions and customers write; subscriptions and prices read) and the webhook signing secret, both in the app Key Vault as container app secret references. Neither is ever logged.
+- **Webhook endpoint:** `https://opportunities.thedatainnovationhub.com/api/stripe/webhook`, on the same API version the code pins (`2026-09-30.endive`, `STRIPE_API_VERSION` in `Services/Billing.js`).
+- **Secrets:** a restricted API key (Checkout and portal sessions and customers write; subscriptions, prices and charges read) and the webhook signing secret, both in the app Key Vault as container app secret references. Neither is ever logged.
 
 ### Flow
 1. The billing card in Settings shows the company's plan. A company admin chooses a plan and interval, and `POST /companies/:id/billing/checkout` returns a Stripe Checkout URL. The company's Stripe customer is created once, under a row lock, and reused.
 2. Checkout opens when the free-period notice starts (28 days before `free_period_until`, so 3 Jan 2027), or at once when there is no free period. A checkout made before the free period ends gets `trial_end` set to 00:00 Europe/London on the day after it, so nothing is charged before 1 Feb. Stripe needs a trial to end at least 48 hours ahead, so within 48 hours of the end the subscription starts at once.
 3. Stripe calls the webhook. The route is mounted before the JSON parser and the same-origin and session checks, reads the raw body (256 kB limit) and verifies the signature. It records the event id once (`stripe_event`), then reads the subscription back from Stripe rather than trusting the event's order, and upserts `company_billing`. Events handled:
-   - `checkout.session.completed`;
+   - `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed` (a bank debit settles days after checkout; its subscription stays `incomplete`, so not live, until then);
    - `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`;
-   - `invoice.paid` and `invoice.payment_failed`.
+   - `invoice.paid` and `invoice.payment_failed`;
+   - `charge.dispute.created`, `radar.early_fraud_warning.created` and `charge.refunded`: the charge leads to the Stripe customer and so the company, and each is recorded in its audit log. A dispute or fraud warning is logged for the failures alert. The plan is not changed automatically: someone decides in Stripe whether to refund or cancel, and a cancellation comes back as a subscription event.
 
-   Any other event gets a 200 and is ignored.
+   Any other event gets a 200 and is ignored. Checkout sessions carry `integration_identifier` so they can be told apart in the Stripe Dashboard.
 4. "Manage billing" (`POST /companies/:id/billing/portal`, company admin) returns a portal URL. Plan changes made there come back through the webhook.
 
 ### Who pays for a run (worker, per company and week)

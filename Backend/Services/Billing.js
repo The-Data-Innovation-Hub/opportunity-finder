@@ -11,6 +11,11 @@ const PRICE_ENV = {
 	own_key: {month: 'STRIPE_PRICE_OWN_KEY_MONTH', year: 'STRIPE_PRICE_OWN_KEY_YEAR'},
 }
 export const BILLING_ENV = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', ...Object.values(PRICE_ENV).flatMap(Object.values)]
+// Pinned rather than left to the account default; the webhook endpoint in
+// Stripe is created with the same version (DEPLOYMENT.md, "Billing").
+export const STRIPE_API_VERSION = '2026-09-30.endive'
+// Tags our checkout sessions in the Stripe Dashboard.
+const CHECKOUT_INTEGRATION = 'opportunity_finder_plans_ookwuqbx'
 
 const isoFromSeconds = (s) => (s ? new Date(s * 1000).toISOString() : null)
 
@@ -31,10 +36,15 @@ export const toSubscription = (s, planOfPrice) => {
 	}
 }
 
+// Checkout events that can change a subscription's state. A bank debit
+// settles days after checkout: until then the subscription is incomplete,
+// which is not a live status, so the plan starts on the async event.
+const CHECKOUT_EVENTS = ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed']
+
 // The subscription an event is about, or null for events that need no action.
 export const subscriptionIdOf = (event) => {
 	const o = event.data?.object ?? {}
-	if (event.type == 'checkout.session.completed') return o.mode == 'subscription' ? idOf(o.subscription) : null
+	if (CHECKOUT_EVENTS.includes(event.type)) return o.mode == 'subscription' ? idOf(o.subscription) : null
 	if (event.type.startsWith('customer.subscription.')) return o.id
 	if (event.type == 'invoice.paid' || event.type == 'invoice.payment_failed') {
 		return idOf(o.parent?.subscription_details?.subscription ?? o.subscription)
@@ -43,16 +53,28 @@ export const subscriptionIdOf = (event) => {
 }
 const idOf = (v) => (typeof v == 'string' ? v : v?.id ?? null)
 
+// Disputes, refunds and early fraud warnings, with the charge they are
+// about, or null for other events. The charge leads to the Stripe customer,
+// which is the company; a refund event carries the charge itself.
+export const riskOf = (event) => {
+	const o = event.data?.object ?? {}
+	if (event.type == 'charge.dispute.created') return {kind: 'dispute', id: o.id, chargeId: idOf(o.charge), reason: o.reason ?? null}
+	if (event.type == 'radar.early_fraud_warning.created') return {kind: 'fraud_warning', id: o.id, chargeId: idOf(o.charge), reason: o.fraud_type ?? null}
+	if (event.type == 'charge.refunded') return {kind: 'refund', id: o.id, chargeId: o.id, customerId: idOf(o.customer), reason: o.refunded ? 'full' : 'partial'}
+	return null
+}
+
 const planLookup = (prices) => (priceId) => {
 	for (const plan of PLANS) for (const interval of INTERVALS) if (prices[plan][interval] == priceId) return {plan, interval}
 	return null
 }
 
-export const createBilling = (env = process.env) => {
+// `connection` is for tests only: it points the client at a local server.
+export const createBilling = (env = process.env, connection = {}) => {
 	if (!env.STRIPE_SECRET_KEY) return null
 	const missing = BILLING_ENV.filter((name) => !env[name])
 	if (missing.length) throw new Error(`Billing configuration missing: ${missing.join(', ')}`)
-	const stripe = new Stripe(env.STRIPE_SECRET_KEY, {maxNetworkRetries: 2, timeout: 20_000})
+	const stripe = new Stripe(env.STRIPE_SECRET_KEY, {apiVersion: STRIPE_API_VERSION, maxNetworkRetries: 2, timeout: 20_000, ...connection})
 	const prices = Object.fromEntries(PLANS.map((plan) => [plan, Object.fromEntries(INTERVALS.map((i) => [i, env[PRICE_ENV[plan][i]]]))]))
 	const planOfPrice = planLookup(prices)
 	return {
@@ -71,11 +93,13 @@ export const createBilling = (env = process.env) => {
 			customer_update: {address: 'auto', name: 'auto'},
 			success_url: successUrl,
 			cancel_url: cancelUrl,
+			integration_identifier: CHECKOUT_INTEGRATION,
 		})).url,
 		portalUrl: async ({customerId, returnUrl}) => (await stripe.billingPortal.sessions.create({customer: customerId, return_url: returnUrl})).url,
 		subscription: async (id) => toSubscription(await stripe.subscriptions.retrieve(id), planOfPrice),
 		subscriptionsOf: async (customerId) => (await stripe.subscriptions.list({customer: customerId, status: 'all', limit: 10})).data
 			.map((s) => toSubscription(s, planOfPrice)),
+		customerOfCharge: async (chargeId) => idOf((await stripe.charges.retrieve(chargeId)).customer),
 		// Throws unless the body is signed with the webhook secret, within
 		// Stripe's default five-minute tolerance.
 		event: (rawBody, signature) => stripe.webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET),
@@ -88,10 +112,11 @@ export const createFakeBilling = ({webhookSecret = 'whsec_test_fake'} = {}) => {
 	const stripe = new Stripe('sk_test_fake')
 	const customers = new Map()
 	const subscriptions = new Map()
+	const charges = new Map()
 	const calls = []
 	let next = 1
 	return {
-		calls, customers, subscriptions, webhookSecret,
+		calls, customers, subscriptions, charges, webhookSecret,
 		createCustomer: async ({companyId, name}) => {
 			const id = `cus_fake${next++}`
 			customers.set(id, {companyId, name})
@@ -112,9 +137,15 @@ export const createFakeBilling = ({webhookSecret = 'whsec_test_fake'} = {}) => {
 			return s
 		},
 		subscriptionsOf: async (customerId) => [...subscriptions.values()].filter((s) => s.customerId == customerId),
-		// Test helpers: a subscription as Stripe would hold it, and a signed event.
+		customerOfCharge: async (chargeId) => {
+			if (!charges.has(chargeId)) throw Object.assign(new Error(`No such charge: '${chargeId}'`), {type: 'StripeInvalidRequestError'})
+			return charges.get(chargeId)
+		},
+		// Test helpers: a subscription as Stripe would hold it, a charge's
+		// customer (setCharge), and a signed event.
 		setSubscription: (s) => subscriptions.set(s.id, {plan: 'subscription', interval: 'month', status: 'active',
 			currentPeriodEnd: '2027-03-01T00:00:00.000Z', cancelAtPeriodEnd: false, ...s}),
+		setCharge: (id, customerId) => charges.set(id, customerId),
 		signed: (event) => {
 			const payload = JSON.stringify({object: 'event', created: Math.floor(Date.now() / 1000), ...event})
 			return {payload, signature: stripe.webhooks.generateTestHeaderString({payload, secret: webhookSecret})}
