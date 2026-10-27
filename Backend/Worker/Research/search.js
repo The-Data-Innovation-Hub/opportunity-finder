@@ -24,6 +24,10 @@ export const REGION_SCOPES = {uk_ireland: ['NI', 'IE', 'UK'], uk: ['NI', 'UK'], 
 export const regionScope = (regions = []) => regions.includes('UK') ? (regions.includes('IE') ? 'uk_ireland' : 'uk')
 	: regions.length ? 'island' : 'uk_ireland'
 export const scopeRegions = (regions) => REGION_SCOPES[regionScope(regions)]
+// EU programmes (catalogue region 'EU') are open to every scope, so one of
+// the company's passes carries them: the UK pass, or Ireland's when the
+// scope is the island of Ireland.
+export const euHost = (regions) => regions.includes('UK') ? 'UK' : 'IE'
 const CATALOGUE = JSON.parse(fs.readFileSync(new URL('../Sources/catalogue.json', import.meta.url), 'utf8'))
 export const domainsFor = (regions = REGIONS) => [...new Set(CATALOGUE
 	.filter((s) => regions.includes(s.region) && s.access != 'login')
@@ -40,7 +44,7 @@ const fitsSectors = (tags, profile) => {
 	const mine = (profile.sectors ?? []).join(' ').toLowerCase()
 	return tags.some((t) => mine.includes(t.toLowerCase()))
 }
-export const schemesFor = (region, profile) => SCHEMES.filter((s) => s.region == region && fitsSectors(s.sectors, profile))
+export const schemesFor = (region, profile, {eu = false} = {}) => SCHEMES.filter((s) => (s.region == region || (eu && s.region == 'EU')) && fitsSectors(s.sectors, profile))
 
 const nullableString = (description) => ({type: ['string', 'null'], description})
 const isoDate = 'YYYY-MM-DD exactly as published, or null when no fixed date (rolling) or not published'
@@ -53,7 +57,7 @@ const FUNDING_ROW = {
 	properties: {
 		fund: {type: 'string', description: 'Programme or competition name as the funder publishes it'},
 		funder: {type: 'string'},
-		source_group: {type: 'string', enum: ['Invest NI', 'UK', 'InterTradeIreland', 'NI Health', 'Ireland', 'Other']},
+		source_group: {type: 'string', enum: ['Invest NI', 'UK', 'InterTradeIreland', 'NI Health', 'Ireland', 'EU', 'Other']},
 		type: {type: 'string', enum: ['grant', 'competition (grant)', 'competition', 'loan', 'equity', 'accelerator', 'voucher', 'tax relief', 'advice']},
 		amount: nullableString('Amount or range as published, e.g. "Up to £100k" or "Share of up to £5m"'),
 		match_funding: nullableString('Intervention rate or match-funding rule as published; say "Not stated" when the page does not give one'),
@@ -124,13 +128,13 @@ export const SUBMIT_REPORT = {
 			},
 			not_included: {
 				type: 'array',
-				description: 'Every standing-checklist scheme and every supplied Innovate UK competition that has no row, each with the reason',
+				description: 'Every standing-checklist scheme, every supplied Innovate UK competition and every shortlisted EU call that has no row, each with the reason',
 				items: {
 					type: 'object',
 					additionalProperties: false,
 					required: ['name', 'reason'],
 					properties: {
-						name: {type: 'string', description: 'The scheme or competition name exactly as given in the message'},
+						name: {type: 'string', description: 'The scheme, competition or EU call name exactly as given in the message'},
 						reason: {type: 'string', description: 'Up to 12 words, e.g. "Battery manufacturing only" or "Scheme page no longer exists"'},
 					},
 				},
@@ -145,13 +149,15 @@ const SYSTEM = `You prepare one regional part of a weekly funding and tender rep
 Regions
 - Northern Ireland: Invest NI and its funds, InterTradeIreland and PEACEPLUS (all-island routes open to NI), NI departments, councils and Go Succeed, NI health and social care, NI sector funders. NI public tenders (supplied below from Find a Tender).
 - Ireland: Republic of Ireland funders and eTenders notices (supplied below). Most ROI schemes require an ROI-registered entity: say so plainly in eligibility_notes, with the company's actual position.
-- United Kingdom: UK-wide schemes (Innovate UK, UKRI, Find a Grant, British Business Bank, R&D tax relief, NIHR, SBRI, National Lottery) and England, Scotland and Wales funders, EU programmes open to UK companies (Horizon Europe, EIC grants), and UK public tenders (supplied below).
+- United Kingdom: UK-wide schemes (Innovate UK, UKRI, Find a Grant, British Business Bank, R&D tax relief, NIHR, SBRI, National Lottery) and England, Scotland and Wales funders, and UK public tenders (supplied below).
+- EU programmes: one pass also covers EU programmes (Horizon Europe, the EIC, Digital Europe and others) from the EU Funding & Tenders Portal; the message says when yours does. UK and NI organisations can apply to Horizon Europe and Euratom, as the UK is associated to them (the EIC Accelerator gives UK companies its grant only, not its equity); the other EU programmes need an organisation established in an EU member state such as Ireland, so say so in eligibility_notes, with the company's actual position. Use source_group EU for these rows.
 
 Method. Coverage matters as much as accuracy, so work through every step.
 1. Re-check every row of last week's report that belongs to your region on its official page: update status, dates and amounts. Keep every row that still exists. Drop a row only when its page shows the scheme no longer exists, and say which in notes.
 2. Read the funder pages supplied in the message. They were fetched this week from the funders' own sites, so treat them as the official pages and cite their URLs; do not fetch them again. Add the schemes on them that suit this company.
 3. Check every scheme on the standing checklist, using its supplied page where there is one. Include each one that exists, even if a weak fit (say why in why_it_fits). Any you leave out go in not_included with the reason.
 3a. Decide on every supplied Innovate UK competition: add it as a row if this company could lead or join an application, otherwise put it in not_included with the reason. The list gives each competition's summary, eligibility and dates; read its page only when you need the amount or scope.
+3b. Decide on every EU call shortlisted for this company in the same way, as one row per call topic named as the portal names it. Then scan the full list of open EU calls for others that suit the company and add those too; read a call's page for its scope before adding it.
 4. Read the pages listed as not readable this week yourself with web_fetch, and a scheme's own page when the supplied text lacks a figure you need.
 5. Use web_search for what the pages do not cover: the company's funding angles first, then new calls and other funders for your region that suit its sectors, products and stage. Set site to a funder's domain whenever you know which funder to look at; open searches (site null) return only the few results that happen to be on source domains.
 6. Review each supplied tender notice and grant listing. Include a tender only if the company could bid for it or supply it directly; leave out contracts to deliver services it does not provide.
@@ -192,6 +198,15 @@ const formatPrevious = (rows) => rows.length == 0
 	? 'None for this region.'
 	: rows.map((r) => `- ${r.name} | ${r.status ?? ''} | closes ${r.closing_date ?? 'n/a'} | amount ${r.amount ?? 'n/a'} | rate ${r.match_funding ?? 'n/a'} | email ${r.email ?? 'none'} | phone ${r.phone ?? 'none'} | ${r.website ?? ''}`).join('\n')
 
+const EU_ELIGIBILITY = {true: 'UK and NI organisations can apply', false: 'needs an organisation established in an EU member state (e.g. Ireland)'}
+// One short line per call: the list is long, and repeated on every turn.
+const formatEuListing = (c) => `- ${c.identifier} | ${c.title.slice(0, 90)} | ${c.status == 'Open' ? `closes ${c.closes ?? 'n/a'}` : 'opening soon'}${c.cascade ? ` | ${c.url}` : ''}`
+const formatEuCall = (c) => [
+	`- ${c.title} | ${c.programme}${c.call ? ` | call: ${c.call}` : ''} | ${c.status} | opens ${c.opens ?? 'n/a'} | closes ${c.closes ?? 'n/a'}${c.deadline_model ? ` (${c.deadline_model})` : ''}`,
+	`  ${c.amount ?? 'amount not stated'}${c.action ? ` | ${c.action}` : ''}${c.cascade ? ' | run by an EU-funded project for third parties' : ''} | ${EU_ELIGIBILITY[c.uk_eligible]} | ${c.url}`,
+	c.summary ? `  ${c.summary.slice(0, 500)}` : null,
+].filter(Boolean).join('\n')
+
 const formatCompetition = (c) => `- ${c.title} | ${c.state ?? ''} | opens ${c.opens ?? 'n/a'} | closes ${c.closes ?? 'n/a'} | ${c.url}\n  ${c.summary ?? ''}${c.eligibility ? ` Eligibility: ${c.eligibility}` : ''}`
 
 const formatPage = (p) => [
@@ -202,20 +217,27 @@ const formatPage = (p) => [
 ].filter(Boolean).join('\n')
 
 // The funder pages are the same for every company in a region, so they form
-// the first, cached block; the company-specific part follows.
-export const buildUserMessage = ({profile, today, region, tenders, grants = [], previous, funderPages}) => {
-	const pages = (funderPages?.pages ?? []).filter((p) => p.region == region)
+// the first, cached block; the company-specific part follows. euCalls: the
+// calls shortlisted for this company when this pass carries the EU
+// programmes, otherwise null.
+export const buildUserMessage = ({profile, today, region, tenders, grants = [], previous, funderPages, euCalls = null}) => {
+	const eu = Array.isArray(euCalls)
+	const pages = (funderPages?.pages ?? []).filter((p) => p.region == region || (eu && p.region == 'EU'))
 	const readable = pages.filter((p) => p.ok)
 	const competitions = region == 'UK' ? funderPages?.competitions ?? [] : []
-	const shared = `Source domains for ${REGION_NAMES[region]} (the only sites web_search and web_fetch reach):
-${domainsFor([region]).join(', ')}
+	const allEuCalls = eu ? funderPages?.euCalls ?? [] : []
+	const shared = `Source domains for ${REGION_NAMES[region]}${eu ? ' and the EU programmes' : ''} (the only sites web_search and web_fetch reach):
+${domainsFor(eu ? [region, 'EU'] : [region]).join(', ')}
 
 Funder pages for ${REGION_NAMES[region]}, fetched ${funderPages?.fetched_on ?? 'this week'} from the funders' own sites (${readable.length}):
 
 ${readable.map(formatPage).join('\n\n') || 'None.'}${competitions.length ? `
 
 Innovate UK competitions on the Innovation Funding Service this week (${competitions.length}); decide on every one:
-${competitions.map(formatCompetition).join('\n')}` : ''}`
+${competitions.map(formatCompetition).join('\n')}` : ''}${eu ? `
+
+This pass also covers the EU programmes. All open and forthcoming calls on the EU Funding & Tenders Portal this week (${allEuCalls.length}); a topic's page is https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/<identifier>:
+${allEuCalls.map(formatEuListing).join('\n') || 'None (the portal could not be read this week; use web_search on ec.europa.eu).'}` : ''}`
 	const limits = limitsFor(region)
 	const company = `Today is ${today}. Your region for this pass: ${REGION_NAMES[region]}. Allowance: ${limits.searches} searches and ${limits.fetches} page reads.
 
@@ -223,7 +245,7 @@ Company profile (JSON):
 ${JSON.stringify(profile, null, 2)}
 
 Standing checklist of named schemes for this region:
-${schemesFor(region, profile).map((s) => `- ${s.scheme} (${s.funder}${s.url ? `, ${s.url}` : `, ${s.domain}`})`).join('\n') || 'None.'}
+${schemesFor(region, profile, {eu}).map((s) => `- ${s.scheme} (${s.funder}${s.url ? `, ${s.url}` : `, ${s.domain}`})`).join('\n') || 'None.'}
 
 Funder pages not readable this week (fetch these yourself):
 ${pages.filter((p) => !p.ok).map((p) => `- ${p.organisation}${p.scheme ? `: ${p.scheme}` : ''}: ${p.url}`).join('\n') || 'None.'}
@@ -232,7 +254,10 @@ Tender notices for this region, shortlisted from the portals' own feeds (${tende
 ${tenders.length ? tenders.map(formatTender).join('\n') : 'None matched the pre-filter.'}
 ${grants.length ? `\nGrant listings shortlisted from gov.uk Find a Grant (${grants.length}):\n${grants.map(formatGrant).join('\n')}\n` : ''}
 Last week's report rows for this region (${previous.length}):
-${formatPrevious(previous)}`
+${formatPrevious(previous)}${eu ? `
+
+EU calls shortlisted for this company (${euCalls.length}); decide on every one:
+${euCalls.map(formatEuCall).join('\n') || 'None matched the pre-filter.'}` : ''}`
 	return [
 		{type: 'text', text: shared, cache_control: {type: 'ephemeral'}},
 		{type: 'text', text: company},
@@ -241,10 +266,12 @@ ${formatPrevious(previous)}`
 
 // Code-enforced coverage: every checklist scheme and supplied competition
 // needs a row or a not_included entry. Names are matched on their main words,
-// competitions also on their Innovation Funding Service number.
+// competitions also on their Innovation Funding Service number and EU calls
+// on their identifier.
 const STOP = new Set(['the', 'and', 'for', 'including', 'incl', 'formerly', 'programme', 'programmes', 'fund', 'funds', 'round', 'phase', 'new', 'with'])
 const mainWords = (text) => [...new Set(((text ?? '').toLowerCase().replace(/\(.*?\)/g, ' ').match(/[a-z0-9&]+/g) ?? []).filter((w) => w.length > 2 && !STOP.has(w)))]
 const competitionId = (url) => url?.match(/\/competition\/(\d+)/)?.[1] ?? null
+const mentions = (text, id) => Boolean(id && text?.toLowerCase().includes(id.toLowerCase()))
 const covers = (text, name) => {
 	const wanted = mainWords(name)
 	const have = new Set(mainWords(text))
@@ -253,22 +280,25 @@ const covers = (text, name) => {
 export const missingDecisions = (report, expected) => expected.filter((item) => {
 	const id = competitionId(item.url)
 	if (id && report.funding.some((f) => [f.website, ...f.source_urls].some((u) => competitionId(u) == id))) return false
+	if (report.funding.some((f) => [f.fund, f.website, ...f.source_urls].some((u) => mentions(u, item.id)))) return false
 	if (report.funding.some((f) => covers(`${f.fund} ${f.funder}`, item.name))) return false
-	return !report.not_included.some((n) => covers(n.name, item.name))
+	return !report.not_included.some((n) => mentions(`${n.name} ${n.reason ?? ''}`, item.id) || covers(n.name, item.name))
 })
 
 // provider: from Providers/<name>.js createProvider(), built with the
 // company's own key. tools: optional override for tests.
-export const runSearch = async ({profile, today, region, tenders, grants, previous, funderPages, provider, searchEnabled = true, searchBudget, tools, log = () => {}}) => {
+export const runSearch = async ({profile, today, region, tenders, grants, previous, funderPages, euCalls = null, provider, searchEnabled = true, searchBudget, tools, log = () => {}}) => {
 	if (!provider) throw new Error('runSearch needs the company\'s own provider (Providers/*.js)')
-	const runner = tools ?? createToolRunner({domains: domainsFor([region]), searchEnabled, limits: limitsFor(region), budget: searchBudget})
+	const eu = Array.isArray(euCalls)
+	const runner = tools ?? createToolRunner({domains: domainsFor(eu ? [region, 'EU'] : [region]), searchEnabled, limits: limitsFor(region), budget: searchBudget})
 	const expected = [
-		...schemesFor(region, profile).map((s) => ({name: s.scheme, kind: 'checklist scheme'})),
+		...schemesFor(region, profile, {eu}).map((s) => ({name: s.scheme, kind: 'checklist scheme'})),
 		...(region == 'UK' ? funderPages?.competitions ?? [] : []).map((c) => ({name: c.title, url: c.url, kind: 'Innovate UK competition'})),
+		...(euCalls ?? []).map((c) => ({name: c.title, id: c.cascade ? c.url : c.identifier, kind: 'EU call'})),
 	]
 	const conversation = provider.start({
 		system: SYSTEM,
-		content: buildUserMessage({profile, today, region, tenders, grants, previous, funderPages}),
+		content: buildUserMessage({profile, today, region, tenders, grants, previous, funderPages, euCalls}),
 		tools: [...(searchEnabled ? [WEB_SEARCH] : []), WEB_FETCH, SUBMIT_REPORT],
 	})
 	const validate = (report) => {

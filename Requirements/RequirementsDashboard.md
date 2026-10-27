@@ -38,6 +38,7 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 | DAT-002 | Report history stays downloadable | Verified | `report` per week, reports list and history panel | `api.test.js` report tests; `weekly.test.js` week 2 | Kept 13 weeks (DEC-005) |
 | DAT-003 | Sources are data, not code | Verified | `Worker/Sources/catalogue.json` | earlier source tests in `Tests/` | |
 | DAT-004 | Standing checklist of schemes | Verified | `Worker/Sources/schemes.json`, `missingDecisions` | `search-inputs.test.js`, `research.test.js` | |
+| DAT-005 | EU calls from the Funding & Tenders Portal | Verified | `Worker/Sources/eu.js`, `euHost` and the EU blocks in `Research/search.js`, `Sources/pages.js` | `eu.test.js` (8 DAT-005 tests) | Live portal read 27 Oct 2026: 438 open or forthcoming calls; no paid run yet |
 | INF-001 | Programme admin adds, renames and invites companies | Verified | `POST /admin/companies`, `PATCH /admin/companies/:id`, `/invitations`; rename in `src/pages/Admin.tsx`; grant in `0005_CompanyRename.sql` | `api.test.js` setup test; "INF-001 a programme admin can rename a company…" | Rename is audited (`company.renamed`); duplicate names are 409 |
 | INF-002 | Several users per company, admins and members | Verified | `company_membership`, members routes | `api.test.js` two INF-002 tests | |
 | INF-003 | Programme admins see summaries only | Verified | `API/Admin.js` returns counts and costs only; no admin access to company routes | `api.test.js` "INF-003…" | |
