@@ -76,6 +76,12 @@ npm run build && npm run test:e2e
 
 The end-to-end test (`e2e/`, Playwright, Chromium) signs in with an emailed link, reads a report, opens settings and signs out. `Backend/Tests/E2e/server.js` serves the build with the real API and a disposable `of_test_*` database, which it drops afterwards; it needs `cd Backend && npm install` and, once, `npx playwright install chromium`.
 
+```bash
+npm run test:contract
+```
+
+The contract check (TYP-001) keeps the frontend's response types honest. `Backend/Tests/Contract/capture.js` seeds a disposable `of_test_*` database, calls every route in the `Responses` map in `src/api.ts` (before and after a company is set up), and writes the real responses to `contract/responses.generated.ts` (gitignored). `tsc -p tsconfig.contract.json` then checks them against `Responses`: a field the backend renames, drops, adds or retypes fails it. A new route the pages read goes into `Responses` and into the capture script together.
+
 `npm run lint` is Oxlint (`.oxlintrc.json`) with the React hooks and jsx-a11y rules. It is used instead of ESLint because typescript-eslint does not support TypeScript 7 yet. A rule is turned off in a line comment only with the reason next to it.
 
 GitHub Actions runs all of these on every push to `main` and every pull request (`.github/workflows/tests.yml`), with the database tests on a throwaway Postgres 16. Check the run passed before building an image (`Infra/DEPLOYMENT.md`, "Each release"). That Postgres sorts text by `en_US` rules, as Azure does, so a test that compares rows sorted by text should sort with `COLLATE "C"`.

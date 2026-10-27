@@ -1,7 +1,7 @@
 import {useMemo, useState} from 'react'
 import {Link} from '@tanstack/react-router'
 import {useQuery} from '@tanstack/react-query'
-import {api, daysUntil, formatDate, safeHref, type Credential, type OpportunityRow, type Profile, type Region, type Report, type ReportSummary} from '../api'
+import {api, daysUntil, formatDate, safeHref, type OpportunityRow, type Region, type ReportSummary, type Responses} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Input, Loading, Notice, Select, Stat} from '../components/ui'
 import {CompanyTabs} from '../components/CompanyTabs'
@@ -13,7 +13,7 @@ export const CompanyReport = ({companyId, reportId}: {companyId: string, reportI
 	const me = useMe()
 	const company = me.data?.companies.find((c) => c.id == companyId)
 	// Until the first report exists, look again every minute so it appears without a reload.
-	const reports = useQuery({queryKey: ['reports', companyId], queryFn: () => api.get<{reports: ReportSummary[]}>(`/companies/${companyId}/reports?limit=13`),
+	const reports = useQuery({queryKey: ['reports', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/reports']>(`/companies/${companyId}/reports?limit=13`),
 		refetchInterval: (query) => query.state.data?.reports.length == 0 ? 60_000 : false})
 	const selectedId = reportId ?? reports.data?.reports[0]?.id
 
@@ -36,8 +36,8 @@ export const CompanyReport = ({companyId, reportId}: {companyId: string, reportI
 }
 
 const NoReportYet = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}) => {
-	const profile = useQuery({queryKey: ['profile', companyId], queryFn: () => api.get<{profile: Profile | null}>(`/companies/${companyId}/profile`)})
-	const credential = useQuery({queryKey: ['credential', companyId], queryFn: () => api.get<{credential: Credential}>(`/companies/${companyId}/llm-credential`)})
+	const profile = useQuery({queryKey: ['profile', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/profile']>(`/companies/${companyId}/profile`)})
+	const credential = useQuery({queryKey: ['credential', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/llm-credential']>(`/companies/${companyId}/llm-credential`)})
 	if (profile.isPending || credential.isPending) return <Loading />
 	const steps = [
 		{done: Boolean(profile.data?.profile), label: 'Describe your product and choose regions'},
@@ -82,11 +82,11 @@ const History = ({companyId, reports, selectedId}: {companyId: string, reports: 
 )
 
 const ReportView = ({companyId, reportId, companyName}: {companyId: string, reportId: string, companyName: string}) => {
-	const report = useQuery({queryKey: ['report', companyId, reportId], queryFn: () => api.get<{report: Report}>(`/companies/${companyId}/reports/${reportId}`)})
+	const report = useQuery({queryKey: ['report', companyId, reportId], queryFn: () => api.get<Responses['GET /companies/:companyId/reports/:reportId']>(`/companies/${companyId}/reports/${reportId}`)})
 	const week = report.data?.report.week_start.slice(0, 10)
 	const rows = useQuery({
 		queryKey: ['opportunities', companyId, week],
-		queryFn: () => api.get<{rows: OpportunityRow[]}>(`/companies/${companyId}/opportunities?week=${week}`),
+		queryFn: () => api.get<Responses['GET /companies/:companyId/opportunities']>(`/companies/${companyId}/opportunities?week=${week}`),
 		enabled: Boolean(week),
 	})
 	const [downloading, setDownloading] = useState(false)
@@ -100,7 +100,7 @@ const ReportView = ({companyId, reportId, companyName}: {companyId: string, repo
 		setDownloading(true)
 		setDownloadError(null)
 		try {
-			const {url} = await api.get<{url: string}>(`/companies/${companyId}/reports/${reportId}/download`)
+			const {url} = await api.get<Responses['GET /companies/:companyId/reports/:reportId/download']>(`/companies/${companyId}/reports/${reportId}/download`)
 			window.location.assign(url)
 		} catch (e) {
 			setDownloadError(e)

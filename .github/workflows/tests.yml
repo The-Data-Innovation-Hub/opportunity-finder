@@ -58,6 +58,8 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      # TYP-001: real API responses against the frontend's types.
+      - run: npm run test:contract
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

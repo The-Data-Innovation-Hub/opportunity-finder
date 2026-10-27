@@ -94,11 +94,43 @@ export type ProgrammeKey = {
 export type ServiceSettings = {searchEnabled: boolean, bravePricePer1000Usd: number, monthlyQueryCap: number, reviewDate: string, updatedAt: string}
 export type AdminCompany = {id: string, name: string, status: 'active' | 'paused', created_at: string, members: number, has_profile: boolean,
 	key_status: string | null, provider: string | null, model: string | null, last_run_week: string | null, last_run_status: string | null, last_run_skip_reason: string | null}
+// A company as just created, before it has members or runs.
+export type NewCompany = Pick<AdminCompany, 'id' | 'name' | 'status' | 'created_at'>
 export type AdminRun = {company_id: string, company: string, status: string, skip_reason: string | null, error_code: string | null, provider: string | null,
-	model: string | null, started_at: string | null, finished_at: string | null, input_tokens: string, output_tokens: string,
+	model: string | null, started_at: string | null, finished_at: string | null, input_tokens: string, output_tokens: string, cache_read_tokens: string, cache_write_tokens: string,
 	model_cost_usd: string, paid_by: 'company' | 'programme', search_queries: number, search_cost_usd: string, page_reads: number,
 	funding_rows: number | null, tender_rows: number | null, new_this_week: number | null}
-export type AdminRuns = {gather: null | {week_start: string, status: string, tender_notices: number | null, funder_pages: number | null, competitions: number | null}, runs: AdminRun[]}
+export type AdminRuns = {gather: null | {week_start: string, status: string, started_at: string | null, finished_at: string | null, tender_notices: number | null, funder_pages: number | null, competitions: number | null}, runs: AdminRun[]}
+
+export type ProgrammeSkip = {week: string, reason: 'programme_key_problem' | 'programme_budget_reached'} | null
+
+// TYP-001: every response the pages read, by route. Pages type their calls
+// from this map, and CI checks real backend responses against it
+// (Backend/Tests/Contract/capture.js, then `npm run test:contract`).
+export type Responses = {
+	'GET /me': Me
+	'GET /models': {models: Model[]}
+	'GET /companies/:companyId/profile': {profile: Profile | null}
+	'PUT /companies/:companyId/profile': {profile: Profile}
+	'GET /companies/:companyId/reports': {reports: ReportSummary[], nextBefore: string | null}
+	'GET /companies/:companyId/reports/:reportId': {report: Report}
+	'GET /companies/:companyId/reports/:reportId/download': {url: string, fileName: string, expiresAt: string}
+	'GET /companies/:companyId/opportunities': {weekStart: string | null, reportId?: string, rows: OpportunityRow[]}
+	'GET /companies/:companyId/llm-credential': {credential: Credential, programmeSkip: ProgrammeSkip}
+	'PUT /companies/:companyId/llm-credential': {credential: Credential}
+	'DELETE /companies/:companyId/llm-credential': {credential: Credential}
+	'GET /companies/:companyId/members': {members: Member[]}
+	'GET /admin/companies': {companies: AdminCompany[]}
+	'POST /admin/companies': {company: NewCompany}
+	'GET /admin/runs': AdminRuns
+	'GET /admin/service-cost': ServiceCost
+	'GET /admin/service-settings': {settings: ServiceSettings}
+	'PUT /admin/service-settings': {settings: ServiceSettings}
+	'GET /admin/programme-key': ProgrammeKey
+	'PUT /admin/programme-key/settings': ProgrammeKey
+	'PUT /admin/programme-key/credential': ProgrammeKey
+	'DELETE /admin/programme-key/credential': ProgrammeKey
+}
 
 export const formatDate = (value: string | null | undefined) =>
 	value ? new Date(`${value.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}) : '—'

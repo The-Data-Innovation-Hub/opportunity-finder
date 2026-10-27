@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {Link, useParams} from '@tanstack/react-router'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {api, formatDate, type Credential, type Me, type Member, type Model, type Profile, type Region, type Role} from '../api'
+import {api, formatDate, type Credential, type Me, type Region, type Role, type Responses, type ProgrammeSkip} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, MultiSelect, Notice, Select, Textarea} from '../components/ui'
 import {CompanyTabs} from '../components/CompanyTabs'
@@ -47,7 +47,7 @@ export const CompanySettings = () => {
 
 const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}) => {
 	const queryClient = useQueryClient()
-	const profile = useQuery({queryKey: ['profile', companyId], queryFn: () => api.get<{profile: Profile | null}>(`/companies/${companyId}/profile`)})
+	const profile = useQuery({queryKey: ['profile', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/profile']>(`/companies/${companyId}/profile`)})
 	const [form, setForm] = useState({description: '', regions: ['NI', 'IE', 'UK'] as Region[], sectors: [] as string[], keywords: '', cpv: '', customers: '', fitPoints: '', angles: '', exclusions: '', basedIn: '', stage: '', size: ''})
 	const [saved, setSaved] = useState(false)
 
@@ -62,7 +62,7 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 	}, [profile.data])
 
 	const save = useMutation({
-		mutationFn: () => api.put<{profile: Profile}>(`/companies/${companyId}/profile`, {
+		mutationFn: () => api.put<Responses['PUT /companies/:companyId/profile']>(`/companies/${companyId}/profile`, {
 			product_description: form.description, regions: form.regions, sectors: form.sectors, tender_keywords: commas(form.keywords), cpv_prefixes: commas(form.cpv),
 			details: {...profile.data?.profile?.details, customers: lines(form.customers), fit_points: lines(form.fitPoints), funding_angles: lines(form.angles),
 				exclusions: lines(form.exclusions), company: {based_in: form.basedIn, stage: form.stage, size: form.size}},
@@ -131,7 +131,6 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 
 // --- AI provider key (BEH-010) -----------------------------------------------------------
 
-type ProgrammeSkip = {week: string, reason: 'programme_key_problem' | 'programme_budget_reached'} | null
 // DEC-011: "covered" only while the programme's runs are actually working.
 const freeBlocked = (free: Me['freePeriod'], skip: ProgrammeSkip) => free != null && (!free.keyWorking || skip != null)
 const statusBadge = (c: Credential, free: Me['freePeriod'], skip: ProgrammeSkip) => free
@@ -144,8 +143,8 @@ const statusBadge = (c: Credential, free: Me['freePeriod'], skip: ProgrammeSkip)
 const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdmin: boolean, freePeriod: Me['freePeriod']}) => {
 	const queryClient = useQueryClient()
 	const freeUntil = freePeriod?.until ?? null
-	const credential = useQuery({queryKey: ['credential', companyId], queryFn: () => api.get<{credential: Credential, programmeSkip: ProgrammeSkip}>(`/companies/${companyId}/llm-credential`)})
-	const models = useQuery({queryKey: ['models'], queryFn: () => api.get<{models: Model[]}>('/models')})
+	const credential = useQuery({queryKey: ['credential', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/llm-credential']>(`/companies/${companyId}/llm-credential`)})
+	const models = useQuery({queryKey: ['models'], queryFn: () => api.get<Responses['GET /models']>('/models')})
 	const [choice, setChoice] = useState('')
 	const [apiKey, setApiKey] = useState('')
 	const [editing, setEditing] = useState(false)
@@ -153,7 +152,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 	const save = useMutation({
 		mutationFn: () => {
 			const [provider, model] = (choice || `${models.data!.models[0].provider}/${models.data!.models[0].model}`).split('/')
-			return api.put<{credential: Credential}>(`/companies/${companyId}/llm-credential`, {provider, model, apiKey})
+			return api.put<Responses['PUT /companies/:companyId/llm-credential']>(`/companies/${companyId}/llm-credential`, {provider, model, apiKey})
 		},
 		onSuccess: (data) => {
 			queryClient.setQueryData(['credential', companyId], data)
@@ -164,7 +163,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 		onError: () => setApiKey(''),
 	})
 	const remove = useMutation({
-		mutationFn: () => api.delete<{credential: Credential}>(`/companies/${companyId}/llm-credential`),
+		mutationFn: () => api.delete<Responses['DELETE /companies/:companyId/llm-credential']>(`/companies/${companyId}/llm-credential`),
 		onSuccess: (data) => queryClient.setQueryData(['credential', companyId], data),
 	})
 
@@ -235,7 +234,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 
 const Members = ({companyId, isAdmin, myId}: {companyId: string, isAdmin: boolean, myId: string}) => {
 	const queryClient = useQueryClient()
-	const members = useQuery({queryKey: ['members', companyId], queryFn: () => api.get<{members: Member[]}>(`/companies/${companyId}/members`)})
+	const members = useQuery({queryKey: ['members', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/members']>(`/companies/${companyId}/members`)})
 	const [email, setEmail] = useState('')
 	const [role, setRole] = useState<Role>('company_member')
 	const [invited, setInvited] = useState<string | null>(null)
