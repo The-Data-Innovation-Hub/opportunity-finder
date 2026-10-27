@@ -354,6 +354,12 @@ export const runWeek = async ({pool, secrets, blobs, fetchers, now = new Date(),
 
 const runWeekLocked = async ({pool, secrets, blobs, fetchers, now, week, providers, log}) => {
 	const gather = await gatherWeek({pool, blobs, week, fetchers, now, log})
+	const {rows: companies} = await pool.query('SELECT id, name, status FROM company ORDER BY name')
+	return {week, outcomes: await runCompanies({pool, secrets, blobs, week, gather, companies, now, providers, log})}
+}
+
+// Runs the given companies for the week within this month's search and AI caps.
+const runCompanies = async ({pool, secrets, blobs, week, gather, companies, now, providers, log}) => {
 	const {rows: [settings]} = await pool.query(`SELECT search_enabled, brave_price_per_1000_usd, monthly_query_cap, programme_model_monthly_cap_usd
 		FROM service_setting WHERE id = 1`)
 	const {rows: [month]} = await pool.query(`SELECT coalesce(sum(search_queries), 0)::int AS queries,
@@ -367,7 +373,6 @@ const runWeekLocked = async ({pool, secrets, blobs, fetchers, now, week, provide
 		const {rows: [s]} = await pool.query('SELECT free_period_until FROM service_setting WHERE id = 1')
 		return s.free_period_until != null && week <= s.free_period_until
 	}
-	const {rows: companies} = await pool.query('SELECT id, name, status FROM company ORDER BY name')
 	const outcomes = {}
 	await eachLimited(companies, COMPANY_CONCURRENCY, async (company) => {
 		const attempt = {searches: 0, programmeUsd: 0}
@@ -388,7 +393,45 @@ const runWeekLocked = async ({pool, secrets, blobs, fetchers, now, week, provide
 			programmeUsd.settle(grantedUsd, attempt.programmeUsd)
 		}
 	})
-	return {week, outcomes}
+	return outcomes
+}
+
+// --- First report ---------------------------------------------------------------
+
+// A company that has just saved its first profile should not wait for
+// Sunday (BEH-015). A job every 15 minutes runs, for this week, each active
+// company with a profile that has no report and no run that got under way
+// (a skipped run, e.g. no key yet, is tried again), then emails it. It uses
+// the week's shared gather, so normally only the company's own run costs
+// anything. On Sundays it leaves new companies to that night's run, and it
+// shares the weekly job's lock, so the two never run at once.
+export const runFirstReports = async ({pool, secrets, blobs, fetchers, mailer, appUrl, emailFor, now = new Date(), providers, log = () => {}}) => {
+	const week = weekStart(now)
+	if (targetWeek(now) != week) return {week, outcomes: {}, skipped: 'sunday'}
+	const lock = await pool.connect()
+	try {
+		const {rows: [held]} = await lock.query('SELECT pg_try_advisory_lock($1) AS ok', [WEEKLY_JOB_LOCK])
+		if (!held.ok) return {week, outcomes: {}, skipped: 'another_weekly_job_running'}
+		try {
+			const {rows: companies} = await pool.query(`SELECT c.id, c.name, c.status FROM company c
+				WHERE c.status = 'active'
+					AND EXISTS (SELECT 1 FROM company_profile p WHERE p.company_id = c.id)
+					AND NOT EXISTS (SELECT 1 FROM report r WHERE r.company_id = c.id)
+					AND NOT EXISTS (SELECT 1 FROM search_run s WHERE s.company_id = c.id AND s.status IN ('running', 'succeeded', 'failed'))
+				ORDER BY c.created_at`)
+			if (!companies.length) return {week, outcomes: {}}
+			log(`first reports for ${companies.length} companies, week ${week}`)
+			const gather = await gatherWeek({pool, blobs, week, fetchers, now, log})
+			const outcomes = await runCompanies({pool, secrets, blobs, week, gather, companies, now, providers, log})
+			const done = Object.keys(outcomes).filter((id) => outcomes[id].status == 'succeeded')
+			if (done.length) await sendWeeklyEmails({pool, mailer, appUrl, week, emailFor, companyIds: done, log})
+			return {week, outcomes}
+		} finally {
+			await lock.query('SELECT pg_advisory_unlock($1)', [WEEKLY_JOB_LOCK])
+		}
+	} finally {
+		lock.release()
+	}
 }
 
 // --- Monday email (BEH-007) ----------------------------------------------------------
@@ -398,18 +441,19 @@ const runWeekLocked = async ({pool, secrets, blobs, fetchers, now, week, provide
 // DEC-011: from four weeks before the free period ends, the email says so.
 export const FREE_PERIOD_NOTICE_DAYS = 28
 
-export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, log = () => {}}) => {
+// companyIds: only these companies' reports (a first report); otherwise all.
+export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, companyIds = null, log = () => {}}) => {
 	const {rows: [settings]} = await pool.query('SELECT free_period_until FROM service_setting WHERE id = 1')
 	const until = settings.free_period_until
 	const freePeriodEnds = until && week <= until && Date.parse(until) - Date.parse(week) <= FREE_PERIOD_NOTICE_DAYS * 864e5 ? until : null
 	await pool.query(`INSERT INTO notification (company_id, report_id, user_id)
 		SELECT r.company_id, r.id, m.user_id FROM report r JOIN company_membership m ON m.company_id = r.company_id
 		JOIN app_user u ON u.id = m.user_id AND u.disabled_at IS NULL
-		WHERE r.week_start = $1 ON CONFLICT (report_id, user_id) DO NOTHING`, [week])
+		WHERE r.week_start = $1 AND ($2::uuid[] IS NULL OR r.company_id = ANY($2)) ON CONFLICT (report_id, user_id) DO NOTHING`, [week, companyIds])
 	const {rows} = await pool.query(`SELECT n.id, n.attempts, u.email, c.name AS company_name, c.id AS company_id, r.id AS report_id,
 			r.funding_rows, r.tender_rows, r.new_this_week, r.top_five
 		FROM notification n JOIN report r ON r.id = n.report_id JOIN company c ON c.id = n.company_id JOIN app_user u ON u.id = n.user_id
-		WHERE r.week_start = $1 AND n.status IN ('pending', 'failed') AND n.attempts < 3`, [week])
+		WHERE r.week_start = $1 AND ($2::uuid[] IS NULL OR r.company_id = ANY($2)) AND n.status IN ('pending', 'failed') AND n.attempts < 3`, [week, companyIds])
 	let sent = 0
 	for (const n of rows) {
 		// Claimed by bumping attempts from the value just read, so two

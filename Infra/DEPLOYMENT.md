@@ -12,7 +12,7 @@ First deployed 24 to 26 Oct 2026 by following these steps. Each step changes Azu
 |---|---|
 | Container App `ca-oppfinder-api` | API and the built frontend, one replica, public HTTPS at `opportunities.thedatainnovationhub.com` (step 9) |
 | Container App `ca-oppfinder-scraper` | Funder-page and listing scraper, internal only, scales to zero |
-| Container Apps jobs `weekly`, `emails`, `cleanup`, `azure-cost` | Scheduled work (times below) |
+| Container Apps jobs `weekly`, `first-reports`, `emails`, `cleanup`, `azure-cost` | Scheduled work (times below) |
 | Container Apps job `migrate` | Run by hand before a new image goes live |
 | PostgreSQL Flexible Server (B1ms, PG 16) | Database `opportunity_finder`, 14-day backups |
 | Key Vault `kv-…-app-…` | Platform secrets: database URLs, Brave key |
@@ -27,6 +27,7 @@ Schedules are in UTC because Container Apps jobs have no time zone:
 | Job | Cron (UTC) | UK time |
 |---|---|---|
 | weekly | `0 22 * * 0` | Sunday 22:00 GMT, 23:00 BST |
+| first-reports | `*/15 * * * *` | every 15 minutes; a new company's first report and email (Monday to Saturday), otherwise exits at once |
 | emails | `0 7 * * 1` | Monday 07:00 GMT, 08:00 BST |
 | cleanup | `0 3 * * *` | daily |
 | azure-cost | `0 5 * * *` | daily |

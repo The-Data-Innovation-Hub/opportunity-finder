@@ -375,6 +375,8 @@ var workerEnv = union(commonEnv, [
 var jobs = [
 	// Sunday 22:00 UTC (22:00 GMT, 23:00 BST): gather, then every company.
 	{name: 'weekly', cron: '0 22 * * 0', command: 'weekly', timeout: 21600}
+	// Every 15 minutes: a new company's first report (exits at once when none is due).
+	{name: 'first-reports', cron: '*/15 * * * *', command: 'first-reports', timeout: 7200}
 	// Monday 07:00 UTC (07:00 GMT, 08:00 BST): the weekly email.
 	{name: 'emails', cron: '0 7 * * 1', command: 'emails', timeout: 1800}
 	{name: 'cleanup', cron: '0 3 * * *', command: 'cleanup', timeout: 1800}

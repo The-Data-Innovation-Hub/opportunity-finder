@@ -75,3 +75,15 @@ test('search, status and "new this week" filter the funding rows', async () => {
 	await user.click(screen.getByRole('checkbox', {name: 'New this week only'}))
 	expect(await names()).toEqual([expect.stringContaining('Smart Grant')])
 })
+
+test('BEH-015 with no report yet and setup done, the company is told its first report is on its way', async () => {
+	mockApi({
+		'GET /me': {body: meAs('company_admin')},
+		[`GET /companies/${COMPANY_ID}/reports`]: {body: {reports: []}},
+		[`GET /companies/${COMPANY_ID}/profile`]: {body: {profile: {product_description: 'Routing software.'}}},
+		[`GET /companies/${COMPANY_ID}/llm-credential`]: {body: {credential: {configured: true, status: 'valid'}}},
+	})
+	renderApp(`/companies/${COMPANY_ID}`)
+	expect(await screen.findByText(/Your first report is being prepared/)).toBeInTheDocument()
+	expect(screen.queryByText(/after the next Sunday run/)).not.toBeInTheDocument()
+})
