@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {toCall, amountOf, plainText, shortlistEuCalls} from '../Worker/Sources/eu.js'
+import {toCall, amountOf, plainText, shortlistEuCalls, readEuTopic} from '../Worker/Sources/eu.js'
 import {buildUserMessage, missingDecisions, schemesFor, euHost} from '../Worker/Research/search.js'
 import {gatherFunderPages} from '../Worker/Sources/pages.js'
 
@@ -109,4 +109,25 @@ test('DAT-005 the weekly gather adds the EU calls, and a portal failure leaves t
 	const failed = await gatherFunderPages({regions: [], scrape, delayMs: 0, euCalls: async () => { throw new Error('EU portal search returned 503') }, log: (l) => lines.push(l)})
 	assert.deepEqual(failed.euCalls, [])
 	assert.ok(lines.includes('EU calls not read: EU portal search returned 503'))
+})
+
+test('DAT-005 a web_fetch of an EU call page is answered from the topic\'s data, which needs no browser', async () => {
+	const asked = []
+	const fetchJson = async (url) => {
+		asked.push(url)
+		return {ok: true, json: async () => ({TopicDetails: {identifier: 'HORIZON-HLTH-2027-01-STAYHLTH-01', title: 'Independent living', callTitle: 'Cluster 1 - Health',
+			actions: [{plannedOpeningDate: Date.UTC(2026, 9, 29), deadlineDates: [Date.UTC(2027, 1, 17)]}],
+			budgetOverviewJSONItem: {budgetTopicActionMap: {1: [{action: 'HORIZON-HLTH-2027-01-STAYHLTH-01 - RIA', minContribution: 6e6, maxContribution: 8e6}]}},
+			description: '<p>Expected Outcome: care at home</p>', conditions: '<h4>Eligible countries</h4>'}})}
+	}
+	const page = await readEuTopic('https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-HLTH-2027-01-STAYHLTH-01', {fetchJson})
+	assert.equal(asked[0], 'https://ec.europa.eu/info/funding-tenders/opportunities/data/topicDetails/horizon-hlth-2027-01-stayhlth-01.json')
+	assert.equal(page.status, 'Succeeded')
+	assert.ok(page.content.includes('Dates: opens 2026-10-29, deadline 2027-02-17'))
+	assert.ok(page.content.includes('EUR 6m to 8m per project') && page.content.includes('Expected Outcome: care at home') && page.content.includes('Eligible countries'))
+	assert.equal(await readEuTopic('https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/48106227', {fetchJson}), null)
+	assert.equal(await readEuTopic('https://example.com/opportunities/data/topicDetails/x.json', {fetchJson}), null)
+	assert.equal(asked.length, 1)
+	const failed = await readEuTopic('https://ec.europa.eu/info/funding-tenders/opportunities/data/topicDetails/x-1.json', {fetchJson: async () => ({ok: false, status: 404})})
+	assert.equal(failed.status, 'Failed')
 })

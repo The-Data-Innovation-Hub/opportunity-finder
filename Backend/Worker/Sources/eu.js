@@ -109,6 +109,35 @@ const readTopic = async (call) => {
 	}
 }
 
+// A call topic's page on the portal needs a browser, so a web_fetch of it
+// (or of its data file) is answered from the topic's data instead: the same
+// page as text. Returns null for any other address.
+const TOPIC_PAGE = /\/opportunities\/(?:portal\/screen\/opportunities\/topic-details\/|data\/topicDetails\/)([A-Za-z0-9._-]+?)(?:\.json)?(?:[?#].*)?$/
+export const readEuTopic = async (url, {fetchJson = fetch} = {}) => {
+	const identifier = typeof url == 'string' && url.startsWith('https://ec.europa.eu/') ? url.match(TOPIC_PAGE)?.[1] : null
+	if (!identifier) return null
+	try {
+		const response = await fetchJson(TOPIC_URL(identifier), {signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers: {accept: 'application/json'}})
+		if (!response.ok) return {url, status: 'Failed', error: `EU portal returned ${response.status}`}
+		const topic = (await response.json()).TopicDetails ?? {}
+		// Dates come as epoch milliseconds.
+		const day = (v) => new Date(v).toISOString().slice(0, 10)
+		const deadlines = (topic.actions ?? []).flatMap((a) => [a.plannedOpeningDate && `opens ${day(a.plannedOpeningDate)}`,
+			...(a.deadlineDates ?? []).map((d) => `deadline ${day(d)}`)]).filter(Boolean)
+		const content = [
+			`${topic.identifier ?? identifier}: ${topic.title ?? ''}`,
+			topic.callTitle ? `Call: ${topic.callTitle}` : null,
+			deadlines.length ? `Dates: ${deadlines.join(', ')}` : null,
+			amountOf(topic.budgetOverviewJSONItem, topic.identifier ?? identifier),
+			plainText(topic.description),
+			plainText(topic.conditions),
+		].filter(Boolean).join('\n\n')
+		return {url, status: 'Succeeded', title: topic.title ?? identifier, content, links: []}
+	} catch (error) {
+		return {url, status: 'Failed', error: error.message}
+	}
+}
+
 // Every open or forthcoming call, one entry per call page.
 export const fetchEuCalls = async ({today = new Date().toISOString().slice(0, 10), log = () => {}} = {}) => {
 	const calls = new Map()
