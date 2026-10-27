@@ -5,6 +5,7 @@
 // goes through the scraper service (funder_page worker).
 import fs from 'node:fs'
 import {scrapePage, fetchIfsCompetitions} from './scraper.js'
+import {fetchEuCalls} from './eu.js'
 
 const CATALOGUE = JSON.parse(fs.readFileSync(new URL('./catalogue.json', import.meta.url), 'utf8'))
 const SCHEMES = JSON.parse(fs.readFileSync(new URL('./schemes.json', import.meta.url), 'utf8'))
@@ -31,20 +32,22 @@ const toPage = (document, extra) => ({
 	links: (document.links ?? []).slice(0, MAX_LINKS),
 })
 
-export const gatherFunderPages = async ({regions, log = () => {}}) => {
+// EU programmes (catalogue and checklist region 'EU') are gathered for
+// every scope: each company's report carries them in one of its passes.
+export const gatherFunderPages = async ({regions, log = () => {}, scrape = scrapePage, euCalls = fetchEuCalls, delayMs = PAGE_DELAY_MS}) => {
 	const pages = []
-	for (const region of regions) {
+	for (const region of [...regions, 'EU']) {
 		// more_pages: further pages of a paged listing (e.g. Innovate UK's competition search).
 		for (const source of sharedListings(region)) {
 			for (const url of [source.listing_url, ...(source.more_pages ?? [])]) {
-				pages.push(toPage(await scrapePage(url), {region, kind: 'listing', organisation: source.organisation}))
-				await sleep(PAGE_DELAY_MS)
+				pages.push(toPage(await scrape(url), {region, kind: 'listing', organisation: source.organisation}))
+				await sleep(delayMs)
 			}
 		}
 		for (const scheme of SCHEMES.filter((s) => s.region == region && s.url)) {
 			if (pages.some((p) => p.url == scheme.url)) continue
-			pages.push(toPage(await scrapePage(scheme.url), {region, kind: 'scheme', organisation: scheme.funder, scheme: scheme.scheme}))
-			await sleep(PAGE_DELAY_MS)
+			pages.push(toPage(await scrape(scheme.url), {region, kind: 'scheme', organisation: scheme.funder, scheme: scheme.scheme}))
+			await sleep(delayMs)
 		}
 		const mine = pages.filter((p) => p.region == region)
 		log(`${region}: ${mine.length} funder pages (${mine.filter((p) => !p.ok).length} failed)`)
@@ -59,5 +62,12 @@ export const gatherFunderPages = async ({regions, log = () => {}}) => {
 		}
 		log(`UK: ${competitions.length} Innovate UK competitions`)
 	}
-	return {fetched_on: new Date().toISOString().slice(0, 10), pages, competitions}
+	// EU Funding & Tenders Portal calls, matched to each company later.
+	let eu = []
+	try {
+		eu = await euCalls({log})
+	} catch (error) {
+		log(`EU calls not read: ${error.message}`)
+	}
+	return {fetched_on: new Date().toISOString().slice(0, 10), pages, competitions, euCalls: eu}
 }

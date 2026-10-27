@@ -6,7 +6,8 @@
 import {readFileSync} from 'node:fs'
 import {shortlistTenders, shortlistGrants} from './Sources/ocds.js'
 import {applyClosedRetention} from './Report/retention.js'
-import {runSearch, chooseTopFive, scopeRegions} from './Research/search.js'
+import {shortlistEuCalls} from './Sources/eu.js'
+import {runSearch, chooseTopFive, scopeRegions, euHost} from './Research/search.js'
 
 const catalogue = JSON.parse(readFileSync(new URL('./Sources/catalogue.json', import.meta.url), 'utf8'))
 const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } }
@@ -40,13 +41,15 @@ export const buildCompanyReport = async ({profile, today, now = new Date(), gath
 		IE: shortlistTenders(gather.ieNotices, profile, {today}),
 	}
 	const grantsFor = {UK: shortlistGrants(gather.grants, profile, {today})}
+	const eu = euHost(regions)
+	const euCalls = shortlistEuCalls(gather.funderPages?.euCalls ?? [], profile, {regions})
 
 	const results = []
 	for (const region of regions) {
-		const previous = previousRows.filter((r) => r.region == region)
-		log(`${region}: ${tendersFor[region].length} tenders, ${(grantsFor[region] ?? []).length} grants, ${previous.length} rows from last week`)
+		const previous = previousRows.filter((r) => r.region == region || (region == eu && r.region == 'EU'))
+		log(`${region}: ${tendersFor[region].length} tenders, ${(grantsFor[region] ?? []).length} grants, ${region == eu ? `${euCalls.length} EU calls, ` : ''}${previous.length} rows from last week`)
 		results.push({region, ...(await runSearch({profile, today, region, tenders: tendersFor[region], grants: grantsFor[region], previous,
-			funderPages: gather.funderPages, provider, searchEnabled, searchBudget, log}))})
+			funderPages: gather.funderPages, euCalls: region == eu ? euCalls : null, provider, searchEnabled, searchBudget, log}))})
 	}
 
 	const seenLastWeek = new Set(previousRows.flatMap((r) => [rowKey(r.website), rowKey(r.name)]).filter(Boolean))
