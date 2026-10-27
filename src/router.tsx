@@ -15,7 +15,9 @@ const report = createRoute({getParentRoute: () => root, path: '/companies/$compa
 const settings = createRoute({getParentRoute: () => root, path: '/companies/$companyId/settings', component: CompanySettings})
 const admin = createRoute({getParentRoute: () => root, path: '/admin', component: Admin})
 
-export const router = createRouter({routeTree: root.addChildren([signIn, home, company, report, settings, admin])})
+// Exported so tests can mount the real routes on a memory history.
+export const routeTree = root.addChildren([signIn, home, company, report, settings, admin])
+export const router = createRouter({routeTree})
 
 declare module '@tanstack/react-router' {
 	interface Register {router: typeof router}

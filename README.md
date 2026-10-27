@@ -65,8 +65,16 @@ cd scraper && .venv/bin/python -m pytest
 ```
 
 ```bash
-npm run lint && npm run typecheck && npm run build
+npm run lint && npm test && npm run typecheck && npm run build
 ```
+
+`npm test` runs the frontend's Vitest suite: `src/**/*.test.ts(x)` against a mocked API (`src/test/app.tsx` mounts the real routes on a memory history).
+
+```bash
+npm run build && npm run test:e2e
+```
+
+The end-to-end test (`e2e/`, Playwright, Chromium) signs in with an emailed link, reads a report, opens settings and signs out. `Backend/Tests/E2e/server.js` serves the build with the real API and a disposable `of_test_*` database, which it drops afterwards; it needs `cd Backend && npm install` and, once, `npx playwright install chromium`.
 
 `npm run lint` is Oxlint (`.oxlintrc.json`) with the React hooks and jsx-a11y rules. It is used instead of ESLint because typescript-eslint does not support TypeScript 7 yet. A rule is turned off in a line comment only with the reason next to it.
 
