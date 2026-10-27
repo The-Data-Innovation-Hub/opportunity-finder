@@ -11,6 +11,7 @@ import {LIMITS} from './Research/tools.js'
 import {scopeRegions} from './Research/search.js'
 import {buildWorkbook} from './Report/workbook.js'
 import {providerFor} from './Providers/index.js'
+import {FREE_PERIOD_NOTICE_DAYS, LIVE_PLAN_STATUSES} from '../Services/Plans.js'
 
 export const COMPANY_CONCURRENCY = 5
 export const targetWeek = (now = new Date()) => weekStart(new Date(now.getTime() + 864e5))
@@ -187,7 +188,7 @@ const loadCredential = async (pool, companyId, programmePays) => {
 // attempt: filled with this attempt's searches and programme-paid model
 // spend, so runWeek can settle the run's reservations.
 const runClaimed = async ({pool, secrets, blobs, week, company, gather, searchEnabled, reserveSearches = async () => Infinity,
-	programmePays = async () => false, reserveModelCost = async () => Infinity, attempt = {}, bravePricePer1000, runId,
+	payerFor = async () => 'company', reserveModelCost = async () => Infinity, attempt = {}, bravePricePer1000, runId,
 	now = new Date(), providers = providerFor, log = () => {}}) => {
 	if (company.status != 'active') return skip(pool, runId, 'company_paused').then(() => ({status: 'skipped', reason: 'company_paused'}))
 
@@ -206,10 +207,12 @@ const runClaimed = async ({pool, secrets, blobs, week, company, gather, searchEn
 		;({result} = kept)
 		await setRun(kept.provider, kept.model, kept.paidBy)
 	} else {
-		// DEC-011: in the free period every company runs on the programme's key;
-		// a company's own key stays stored for afterwards. Read for each run, so
-		// ending the period takes effect from the next run.
-		const free = await programmePays()
+		// DEC-011 and DEC-014: the programme's key in the free period and for a
+		// subscriber, the company's own key otherwise. Read for each run, so
+		// ending the period or a plan takes effect from the next run.
+		const payer = await payerFor(company.id)
+		if (payer == 'none') return skip(pool, runId, 'no_plan').then(() => ({status: 'skipped', reason: 'no_plan'}))
+		const free = payer == 'programme'
 		const credential = await loadCredential(pool, company.id, free)
 		if (free && credential?.status != 'valid') return skip(pool, runId, 'programme_key_problem').then(() => ({status: 'skipped', reason: 'programme_key_problem'}))
 		if (!credential) return skip(pool, runId, 'no_key').then(() => ({status: 'skipped', reason: 'no_key'}))
@@ -368,10 +371,18 @@ const runCompanies = async ({pool, secrets, blobs, week, gather, companies, now,
 	// BEH-013 and DEC-011: what is left of this month's search and AI caps.
 	const searches = allowance(settings.monthly_query_cap - month.queries)
 	const programmeUsd = allowance(Number(settings.programme_model_monthly_cap_usd) - Number(month.programme_usd))
-	// Read for each run, so a free period ended mid-job stops at the next run.
-	const programmePays = async () => {
-		const {rows: [s]} = await pool.query('SELECT free_period_until FROM service_setting WHERE id = 1')
-		return s.free_period_until != null && week <= s.free_period_until
+	// Who pays for a company's run this week: 'programme', 'company' or 'none'.
+	// In the free period, the programme (DEC-011). After it, the company's plan
+	// (DEC-014): a subscription runs on the programme's key, the own-key plan
+	// on the company's, and without a live plan there is no run. Where no free
+	// period was ever set, every company uses its own key, as before DEC-011.
+	const payerFor = async (companyId) => {
+		const {rows: [s]} = await pool.query(`SELECT s.free_period_until, b.plan, b.status FROM service_setting s
+			LEFT JOIN company_billing b ON b.company_id = $1 WHERE s.id = 1`, [companyId])
+		if (s.free_period_until == null) return 'company'
+		if (week <= s.free_period_until) return 'programme'
+		if (!LIVE_PLAN_STATUSES.includes(s.status)) return 'none'
+		return s.plan == 'subscription' ? 'programme' : 'company'
 	}
 	const outcomes = {}
 	await eachLimited(companies, COMPANY_CONCURRENCY, async (company) => {
@@ -384,7 +395,7 @@ const runCompanies = async ({pool, secrets, blobs, week, gather, companies, now,
 		const reserveModelCost = async (estimateUsd) => (grantedUsd = programmeUsd.take(2 * estimateUsd, {atLeast: estimateUsd}))
 		try {
 			outcomes[company.id] = await runCompany({pool, secrets, blobs, week, company, gather, searchEnabled: settings.search_enabled,
-				reserveSearches, programmePays, reserveModelCost, attempt, bravePricePer1000: Number(settings.brave_price_per_1000_usd), now, providers, log})
+				reserveSearches, payerFor, reserveModelCost, attempt, bravePricePer1000: Number(settings.brave_price_per_1000_usd), now, providers, log})
 		} catch (error) {
 			outcomes[company.id] = {status: 'failed'}
 			logLine({event: 'company_run_error', company_id: company.id, message: error.message?.slice(0, 200)})
@@ -456,7 +467,7 @@ export const runFirstReports = async ({pool, secrets, blobs, fetchers, mailer, a
 // One notification per report per member, inserted first so a retried job
 // never emails anyone twice; then every pending one is sent.
 // DEC-011: from four weeks before the free period ends, the email says so.
-export const FREE_PERIOD_NOTICE_DAYS = 28
+export {FREE_PERIOD_NOTICE_DAYS}
 
 // companyIds: only these companies' reports (a first report); otherwise all.
 export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, companyIds = null, log = () => {}}) => {

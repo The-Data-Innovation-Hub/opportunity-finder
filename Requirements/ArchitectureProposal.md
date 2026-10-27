@@ -127,6 +127,62 @@ The trial used Claude's built-in web search and fetch. Those tools, their domain
 - **Review.** On 25 Jan 2027 (in Brendan's Outlook calendar) the programme reviews the three months of Brave and Azure cost against the reports' value. Options are to keep it, lower the cap or per-region search limit, move search to each company's own provider search, or stop it.
 
 
+## Billing after the free period (DEC-014; approved and built 27 Oct 2026)
+
+From 1 Feb 2027 each company needs one of two paid plans to keep its weekly runs. Card payments go through Stripe, so card details never reach our servers.
+
+| Plan | Who pays the AI | Price (ex VAT) |
+|---|---|---|
+| `subscription` | The programme key (as in the free period) | £30 a month or £300 a year |
+| `own_key` | The company's own key (BEH-010) | £10 a month or £100 a year |
+
+### Stripe objects (created once by Brendan, in test mode first)
+- **Products and prices:** two products with four recurring prices, all GBP and tax-exclusive. The price ids go in Bicep parameters, not code.
+- **Stripe Tax:** turned on with the UK VAT number. Checkout collects a billing address and an optional VAT number, so Irish VAT-registered businesses are reverse-charged.
+- **Customer portal:** lets the customer change their card, switch between the four prices, cancel at the end of the period and download invoices.
+- **Webhook endpoint:** `https://opportunities.thedatainnovationhub.com/api/stripe/webhook`.
+- **Secrets:** a restricted API key (Checkout and portal sessions and customers write; subscriptions and prices read) and the webhook signing secret, both in the app Key Vault as container app secret references. Neither is ever logged.
+
+### Flow
+1. The billing card in Settings shows the company's plan. A company admin chooses a plan and interval, and `POST /companies/:id/billing/checkout` returns a Stripe Checkout URL. The company's Stripe customer is created once, under a row lock, and reused.
+2. Checkout opens when the free-period notice starts (28 days before `free_period_until`, so 3 Jan 2027), or at once when there is no free period. A checkout made before the free period ends gets `trial_end` set to 00:00 Europe/London on the day after it, so nothing is charged before 1 Feb. Stripe needs a trial to end at least 48 hours ahead, so within 48 hours of the end the subscription starts at once.
+3. Stripe calls the webhook. The route is mounted before the JSON parser and the same-origin and session checks, reads the raw body (256 kB limit) and verifies the signature. It records the event id once (`stripe_event`), then reads the subscription back from Stripe rather than trusting the event's order, and upserts `company_billing`. Events handled:
+   - `checkout.session.completed`;
+   - `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`;
+   - `invoice.paid` and `invoice.payment_failed`.
+
+   Any other event gets a 200 and is ignored.
+4. "Manage billing" (`POST /companies/:id/billing/portal`, company admin) returns a portal URL. Plan changes made there come back through the webhook.
+
+### Who pays for a run (worker, per company and week)
+1. The week is inside the free period: the programme key, as now (DEC-011).
+2. Else a `subscription` plan whose status is `trialing`, `active` or `past_due`: the programme key. `past_due` keeps runs going while Stripe retries the card; `unpaid`, `canceled` and `incomplete` don't.
+3. Else an `own_key` plan in one of those statuses: the company's key, with today's key checks.
+4. Else the run is skipped with reason `no_plan`. The portal and the email say how to choose a plan, and past reports stay readable.
+
+Where no free period was ever set (`free_period_until` is null), plans are not required and every company uses its own key, as before DEC-011. Clearing **Free until** on the Admin page therefore also stops plans being required; set an end date instead.
+
+A company with a subscription and a key of its own runs on the programme key. The programme-wide monthly cap (DEC-011) still applies, and there is no per-company cap (Brendan: the programme absorbs any overage). The Admin page shows the number of subscribers next to the cap and warns when the cap is below about US$30 per subscriber.
+
+### API additions
+| Route | Access | Response |
+|---|---|---|
+| `GET /companies/:id/billing` | Member | `{billing: {plan, interval, status, currentPeriodEnd, cancelAtPeriodEnd} \| null, checkoutOpensOn, prices}` |
+| `POST /companies/:id/billing/checkout` `{plan, interval}` | Company admin | `{url}`; 409 when the company already has a live subscription (use the portal) |
+| `POST /companies/:id/billing/portal` | Company admin | `{url}`; 409 when there is no Stripe customer yet |
+| `POST /stripe/webhook` | Stripe signature only | `{received: true}` |
+| `GET /admin/companies` | Programme admin | Gains `billing_plan`, `billing_status` (no amounts or card details) |
+
+The Stripe client is injected into `createApp` and the worker like `checkKey`, so tests use a fake and never call Stripe. The official `stripe` package is added for its signature verification and API-version pinning.
+
+### Risks
+| ID | Risk | Mitigation |
+|---|---|---|
+| RSK-006 | A forged or replayed webhook grants a plan | The signature is verified with the signing secret and a 5-minute tolerance. Events are recorded once. The state is read back from Stripe, never taken from the payload |
+| RSK-007 | Two admins check out at once and the company is billed twice | Checkout refuses a company with a live subscription. The customer is created under a row lock. A second live subscription on one customer logs `billing_duplicate_subscription`, which the failures alert picks up, for a refund |
+| RSK-008 | The programme cap is too low once companies subscribe, and every subscriber's runs pause | The Admin page warning and the `programme_budget_reached` alert. The cap is raised before 1 Feb |
+| RSK-009 | A webhook is missed and the plan shown is stale | Stripe retries for 3 days. The checkout success page and the billing card also re-read the subscription from Stripe |
+
 ## Identity and authorization
 
 - Identity provider/session model: per DEC-001. The recommendation is **email magic link** for the first release: programme companies are invited, they sign in with a one-time link, and we store no passwords. Moving to Entra External ID later is possible because accounts are keyed by an identity-provider subject.

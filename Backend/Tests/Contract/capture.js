@@ -13,6 +13,7 @@ import {seedApprovedModels} from '../../Database/Seeds/approvedModels.js'
 import {createApp} from '../../API/App.js'
 import {createOutboxMailer} from '../../Services/Mail.js'
 import {createMemoryStore} from '../../Services/SecretStore.js'
+import {createFakeBilling} from '../../Services/Billing.js'
 
 const OUT = fileURLToPath(new URL('../../../contract/responses.generated.ts', import.meta.url))
 const APP = 'http://localhost:4174'
@@ -26,12 +27,14 @@ const samples = {}
 try {
 	await seedApprovedModels(db.pool)
 	const mailer = createOutboxMailer({environment: 'test'})
+	const billing = createFakeBilling()
 	const app = createApp({
 		pool: await db.rolePool('of_api'),
 		mailer,
 		secrets: createMemoryStore({environment: 'test'}),
 		blobs: {kind: 'fake', downloadUrl: async (name, fileName) => ({url: `${APP}/blobs/${name}`, fileName, expiresAt: 'soon'})},
 		checkKey: async () => 'valid',
+		billing,
 		appUrl: APP,
 		secureCookies: false,
 		rateLimits: {perIp: 1000, perEmail: 1000},
@@ -73,6 +76,7 @@ try {
 		await capture('GET /companies/:companyId/profile', `${c}/profile`, {cookie: founder})
 		await capture('GET /companies/:companyId/reports', `${c}/reports`, {cookie: founder})
 		await capture('GET /companies/:companyId/llm-credential', `${c}/llm-credential`, {cookie: founder})
+		await capture('GET /companies/:companyId/billing', `${c}/billing`, {cookie: founder})
 		await capture('GET /companies/:companyId/opportunities', `${c}/opportunities`, {cookie: founder})
 		await capture('GET /admin/programme-key', '/admin/programme-key', {cookie: admin})
 		await capture('GET /admin/service-cost', '/admin/service-cost', {cookie: admin})
@@ -83,6 +87,11 @@ try {
 			regions: ['NI', 'IE', 'UK'], sectors: ['Health'], tender_keywords: ['care routing'], cpv_prefixes: ['48'], details: {trl: '6'}}})
 		await capture('PUT /companies/:companyId/llm-credential', `${c}/llm-credential`, {cookie: founder, body: key})
 		await send('POST', `${c}/members`, {cookie: founder, body: {email: 'member@example.test', role: 'company_member'}})
+		// DEC-014: a plan bought (checkout is open while no free period is set), as Stripe would report it.
+		await capture('POST /companies/:companyId/billing/checkout', `${c}/billing/checkout`, {cookie: founder, body: {plan: 'subscription', interval: 'year'}})
+		billing.setSubscription({id: 'sub_contract', customerId: [...billing.customers.keys()][0], interval: 'year', status: 'trialing'})
+		await capture('POST /companies/:companyId/billing/sync', `${c}/billing/sync`, {cookie: founder})
+		await capture('POST /companies/:companyId/billing/portal', `${c}/billing/portal`, {cookie: founder})
 		await capture('PUT /admin/programme-key/credential', '/admin/programme-key/credential', {cookie: admin, body: key})
 		await capture('PUT /admin/programme-key/settings', '/admin/programme-key/settings', {cookie: admin, body: {freePeriodUntil: '2099-01-03', monthlyCapUsd: 50}})
 		await capture('GET /admin/service-settings', '/admin/service-settings', {cookie: admin})
@@ -113,6 +122,7 @@ try {
 		await capture('GET /companies/:companyId/opportunities', `${c}/opportunities?week=${WEEK}`, {cookie: founder})
 		await capture('GET /companies/:companyId/llm-credential', `${c}/llm-credential`, {cookie: founder})
 		await capture('GET /companies/:companyId/members', `${c}/members`, {cookie: founder})
+		await capture('GET /companies/:companyId/billing', `${c}/billing`, {cookie: founder})
 		await capture('GET /admin/companies', '/admin/companies', {cookie: admin})
 		await capture('GET /admin/runs', `/admin/runs?week=${WEEK}`, {cookie: admin})
 		await capture('GET /admin/service-cost', '/admin/service-cost', {cookie: admin})

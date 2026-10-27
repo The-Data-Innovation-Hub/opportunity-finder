@@ -4,6 +4,7 @@
 import express from 'express'
 import {audit, email, forbidden, invalid, isoDate, notFound, oneOf, text, uuidParam, weekStart, withTransaction} from './Library.js'
 import {acceptKey, inviteToCompany, sendInvitation} from './Companies.js'
+import {LIVE_PLAN_STATUSES} from '../Services/Plans.js'
 
 const requireProgrammeAdmin = (request, response, next) => {
 	if (!request.user.is_programme_admin) throw forbidden()
@@ -27,9 +28,11 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 				(SELECT count(*)::int FROM company_membership m WHERE m.company_id = c.id) AS members,
 				EXISTS (SELECT 1 FROM company_profile p WHERE p.company_id = c.id) AS has_profile,
 				k.status AS key_status, k.provider, k.model,
-				r.week_start AS last_run_week, r.status AS last_run_status, r.skip_reason AS last_run_skip_reason
+				r.week_start AS last_run_week, r.status AS last_run_status, r.skip_reason AS last_run_skip_reason,
+				b.plan AS billing_plan, b.status AS billing_status
 			FROM company c
 			LEFT JOIN company_llm_credential k ON k.company_id = c.id
+			LEFT JOIN company_billing b ON b.company_id = c.id
 			LEFT JOIN LATERAL (SELECT week_start, status, skip_reason FROM search_run WHERE company_id = c.id ORDER BY week_start DESC LIMIT 1) r ON true
 			ORDER BY c.name`)
 		response.json({companies: rows})
@@ -170,12 +173,14 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 	const programmeView = async () => {
 		const {rows: [c]} = await pool.query(`SELECT p.provider, p.model, p.last_four, p.status, p.checked_at, p.added_at, u.email AS added_by
 			FROM programme_llm_credential p LEFT JOIN app_user u ON u.id = p.added_by WHERE p.id = 1`)
-		const {rows: [s]} = await pool.query('SELECT free_period_until, programme_model_monthly_cap_usd FROM service_setting WHERE id = 1')
+		const {rows: [s]} = await pool.query(`SELECT free_period_until, programme_model_monthly_cap_usd,
+			(SELECT count(*)::int FROM company_billing WHERE plan = 'subscription' AND status = ANY($1)) AS subscribers FROM service_setting WHERE id = 1`, [LIVE_PLAN_STATUSES])
 		return {
 			credential: c ? {configured: true, provider: c.provider, model: c.model, lastFour: c.last_four, status: c.status,
 				checkedAt: c.checked_at, addedAt: c.added_at, addedBy: c.added_by} : {configured: false},
 			freePeriodUntil: s.free_period_until,
 			monthlyCapUsd: Number(s.programme_model_monthly_cap_usd),
+			subscribers: s.subscribers,
 		}
 	}
 

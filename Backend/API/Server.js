@@ -4,6 +4,7 @@ import {createPool} from '../Database/Connection.js'
 import {createMailer} from '../Services/Mail.js'
 import {createSecretStore} from '../Services/SecretStore.js'
 import {createBlobStore} from '../Services/BlobStore.js'
+import {createBilling} from '../Services/Billing.js'
 import {providerFor} from '../Worker/Providers/index.js'
 import {createApp} from './App.js'
 import {logLine} from './Library.js'
@@ -26,6 +27,8 @@ const app = createApp({
 	secrets: createSecretStore(),
 	blobs: createBlobStore(),
 	checkKey: (provider, key) => providerFor(provider).checkApiKey(key),
+	// DEC-014: off until the Stripe settings are present (all or none).
+	billing: createBilling(),
 	appUrl: process.env.APP_URL,
 	allowedOrigins: (process.env.ALLOWED_ORIGINS ?? process.env.APP_URL).split(',').map((o) => o.trim()),
 	secureCookies: production,

@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {Link, useParams} from '@tanstack/react-router'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {api, formatDate, type Credential, type Me, type Region, type Role, type Responses, type ProgrammeSkip} from '../api'
+import {api, formatDate, type Billing, type BillingInterval, type Credential, type Me, type Plan, type Region, type Role, type Responses, type ProgrammeSkip} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, MultiSelect, Notice, Select, Textarea} from '../components/ui'
 import {CompanyTabs} from '../components/CompanyTabs'
@@ -37,6 +37,7 @@ export const CompanySettings = () => {
 			<CompanyTabs company={company} />
 			{!isAdmin && <Notice>You can view these settings. Only your company admins can change them.</Notice>}
 			<ProfileForm companyId={companyId} isAdmin={isAdmin} />
+			<PlanSettings companyId={companyId} isAdmin={isAdmin} />
 			<KeySettings companyId={companyId} isAdmin={isAdmin} freePeriod={me.data!.freePeriod} />
 			<Members companyId={companyId} isAdmin={isAdmin} myId={me.data!.user.id} />
 		</div>
@@ -129,12 +130,131 @@ const ProfileForm = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 	)
 }
 
+// --- Plan (DEC-014) -----------------------------------------------------------------------
+
+const PLAN_LABELS: Record<Plan, {name: string, choose: string, what: string}> = {
+	subscription: {name: 'Subscription', choose: 'Choose subscription', what: 'The programme keeps paying for the AI work behind your weekly reports. No key needed.'},
+	own_key: {name: 'Own AI key', choose: 'Choose own AI key', what: 'Your reports run on your own AI provider key (added below), billed to you by your provider, plus a platform fee.'},
+}
+const pounds = (pence: number) => `£${(pence / 100).toFixed(pence % 100 ? 2 : 0)}`
+const priceText = (prices: Billing['prices'], plan: Plan, interval: BillingInterval) => `${pounds(prices[plan][interval])} a ${interval}`
+const today = () => new Date().toISOString().slice(0, 10)
+const goTo = (url: string) => window.location.assign(url)
+
+const useBilling = (companyId: string) => useQuery({queryKey: ['billing', companyId],
+	queryFn: () => api.get<Responses['GET /companies/:companyId/billing']>(`/companies/${companyId}/billing`)})
+
+const planBadge = (b: Billing) => {
+	const p = b.billing
+	if (p?.live) {
+		if (p.status == 'past_due') return <Badge tone="warn">Card payment failed: update your card</Badge>
+		if (p.cancelAtPeriodEnd) return <Badge tone="warn">Ends {formatDate(p.currentPeriodEnd)}</Badge>
+		return <Badge tone="good">{PLAN_LABELS[p.plan].name}, {priceText(b.prices, p.plan, p.interval)}</Badge>
+	}
+	if (b.plansRequiredFrom && today() >= b.plansRequiredFrom) return <Badge tone="bad">No plan: weekly runs are paused</Badge>
+	return null
+}
+
+const PlanSettings = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}) => {
+	const queryClient = useQueryClient()
+	const billing = useBilling(companyId)
+	const [interval, setPeriod] = useState<BillingInterval>('month')
+	const checkout = useMutation({
+		mutationFn: (plan: Plan) => api.post<Responses['POST /companies/:companyId/billing/checkout']>(`/companies/${companyId}/billing/checkout`, {plan, interval}),
+		onSuccess: ({url}) => goTo(url),
+	})
+	const portal = useMutation({
+		mutationFn: () => api.post<Responses['POST /companies/:companyId/billing/portal']>(`/companies/${companyId}/billing/portal`),
+		onSuccess: ({url}) => goTo(url),
+	})
+	// Back from Stripe: read the plan now rather than wait for Stripe's webhook.
+	const sync = useMutation({
+		mutationFn: () => api.post<Responses['POST /companies/:companyId/billing/sync']>(`/companies/${companyId}/billing/sync`),
+		onSuccess: (data) => queryClient.setQueryData(['billing', companyId], data),
+	})
+	const back = new URLSearchParams(window.location.search).get('billing')
+	useEffect(() => {
+		if (!back) return
+		window.history.replaceState(null, '', window.location.pathname)
+		if (back == 'done') sync.mutate()
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- once, on return from Stripe
+	}, [])
+
+	if (billing.isPending) return <Card title="Plan"><Loading /></Card>
+	if (billing.error) return <Card title="Plan"><ErrorBox error={billing.error} /></Card>
+	const b = billing.data
+	// No free period was ever set: every company runs on its own key, no plan needed.
+	if (!b.plansRequiredFrom) return null
+	const p = b.billing
+	const open = !b.checkoutOpensOn || today() >= b.checkoutOpensOn
+	const required = today() >= b.plansRequiredFrom
+
+	return (
+		<Card title="Plan" action={planBadge(b)}>
+			{sync.isPending && <div className="mb-3"><Notice>Checking your plan with Stripe…</Notice></div>}
+			{p?.live ? (
+				<>
+					<dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+						<dt className="text-muted">Plan</dt><dd>{PLAN_LABELS[p.plan].name}</dd>
+						<dt className="text-muted">Price</dt><dd>{priceText(b.prices, p.plan, p.interval)} + VAT</dd>
+						{p.status == 'trialing'
+							? <><dt className="text-muted">First payment</dt><dd>{formatDate(b.plansRequiredFrom)}</dd></>
+							: <><dt className="text-muted">{p.cancelAtPeriodEnd ? 'Ends' : 'Renews'}</dt><dd>{formatDate(p.currentPeriodEnd)}</dd></>}
+					</dl>
+					<p className="mt-3 text-sm text-muted">{PLAN_LABELS[p.plan].what}</p>
+					{p.status == 'past_due' && <div className="mt-3"><Notice tone="warn">Your last card payment failed. Stripe will try again; please update your card so your weekly reports continue.</Notice></div>}
+					{isAdmin && b.available && (
+						<div className="mt-4"><Button variant="secondary" busy={portal.isPending} onClick={() => portal.mutate()}>Manage billing</Button></div>
+					)}
+					{!isAdmin && <p className="mt-3 text-sm text-muted">Your company admins can change the plan or the card.</p>}
+				</>
+			) : (
+				<>
+					<p className="text-sm text-muted">
+						{required
+							? 'Your weekly reports are paused until a company admin chooses a plan.'
+							: `The programme covers your reports until ${formatDate(b.freePeriodUntil)}. To keep them after that, choose a plan. Choosing early costs nothing until ${formatDate(b.plansRequiredFrom)}.`}
+						{' '}Prices exclude VAT. Payments are taken by Stripe; card details never reach this site.
+					</p>
+					<div className="mt-4 inline-flex rounded-md border border-line p-0.5" role="group" aria-label="Billing period">
+						{(['month', 'year'] as const).map((i) => (
+							<button key={i} type="button" aria-pressed={interval == i} onClick={() => setPeriod(i)}
+								className={`rounded px-3 py-1 text-sm ${interval == i ? 'bg-brand text-white' : 'text-ink'}`}>
+								{i == 'month' ? 'Monthly' : 'Yearly (two months free)'}
+							</button>
+						))}
+					</div>
+					<div className="mt-4 grid gap-3 sm:grid-cols-2">
+						{(['subscription', 'own_key'] as const).map((plan) => (
+							<div key={plan} className="rounded-md border border-line p-4">
+								<div className="font-medium">{PLAN_LABELS[plan].name}</div>
+								<div className="mt-1 text-lg font-semibold">{priceText(b.prices, plan, interval)} <span className="text-sm font-normal text-muted">+ VAT</span></div>
+								<p className="mt-2 text-sm text-muted">{PLAN_LABELS[plan].what}</p>
+								{isAdmin && (
+									<Button className="mt-3" busy={checkout.isPending && checkout.variables == plan} disabled={!open || !b.available || checkout.isPending}
+										onClick={() => checkout.mutate(plan)}>{PLAN_LABELS[plan].choose}</Button>
+								)}
+							</div>
+						))}
+					</div>
+					{!open && <p className="mt-3 text-sm text-muted">Plans can be chosen from {formatDate(b.checkoutOpensOn)}.</p>}
+					{open && !b.available && <div className="mt-3"><Notice tone="warn">Plans cannot be bought online yet. Please try again later.</Notice></div>}
+					{!isAdmin && <p className="mt-3 text-sm text-muted">Only your company admins can choose a plan.</p>}
+					{back == 'cancelled' && <div className="mt-3"><Notice>Checkout was cancelled. Nothing was charged.</Notice></div>}
+				</>
+			)}
+			{(checkout.error || portal.error || sync.error) && <div className="mt-3"><ErrorBox error={checkout.error ?? portal.error ?? sync.error} /></div>}
+		</Card>
+	)
+}
+
 // --- AI provider key (BEH-010) -----------------------------------------------------------
 
 // DEC-011: "covered" only while the programme's runs are actually working.
 const freeBlocked = (free: Me['freePeriod'], skip: ProgrammeSkip) => free != null && (!free.keyWorking || skip != null)
-const statusBadge = (c: Credential, free: Me['freePeriod'], skip: ProgrammeSkip) => free
+const statusBadge = (c: Credential, free: Me['freePeriod'], skip: ProgrammeSkip, subscribed: boolean) => free
 	? (freeBlocked(free, skip) ? <Badge tone="warn">Free period: runs paused</Badge> : <Badge tone="good">Covered by the programme until {formatDate(free.until)}</Badge>)
+	: subscribed ? <Badge tone="good">Not needed: your subscription covers the AI</Badge>
 	: !c.configured ? <Badge tone="warn">No key: weekly runs are paused</Badge>
 	: c.status == 'valid' ? <Badge tone="good">Working</Badge>
 	: c.status == 'invalid' ? <Badge tone="bad">Key rejected: please replace it</Badge>
@@ -145,6 +265,9 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 	const freeUntil = freePeriod?.until ?? null
 	const credential = useQuery({queryKey: ['credential', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/llm-credential']>(`/companies/${companyId}/llm-credential`)})
 	const models = useQuery({queryKey: ['models'], queryFn: () => api.get<Responses['GET /models']>('/models')})
+	// DEC-014: on the subscription the programme's key is used, so none is needed.
+	const plan = useBilling(companyId).data?.billing
+	const subscribed = Boolean(plan?.live && plan.plan == 'subscription')
 	const [choice, setChoice] = useState('')
 	const [apiKey, setApiKey] = useState('')
 	const [editing, setEditing] = useState(false)
@@ -174,7 +297,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 	const modelList = models.data.models
 
 	return (
-		<Card title="AI provider" action={statusBadge(c, freePeriod, skip)}>
+		<Card title="AI provider" action={statusBadge(c, freePeriod, skip, subscribed)}>
 			{freeBlocked(freePeriod, skip) && (
 				<div className="mb-3"><Notice tone="warn">
 					{skip?.reason == 'programme_budget_reached'
@@ -187,7 +310,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 					Until {formatDate(freeUntil)} the programme pays for the AI work behind your weekly reports, so you do not need a key. A key you add now is kept and used from then on{c.configured && c.status != 'valid' ? ', so please replace the one below' : ''}.
 				</Notice></div>
 			)}
-			<p className="text-sm text-muted">{freeUntil ? 'After the free period, the weekly search' : 'The weekly search'} runs on your own AI provider account, so its cost (typically about {modelList[0]?.typicalCostUsd != null ? `US$${modelList[0].typicalCostUsd.toFixed(2)}` : 'a few dollars'} a week) is billed to you. Your key is stored in a secure key vault. It is never shown again, and only its last four characters are kept here.</p>
+			<p className="text-sm text-muted">{freeUntil ? 'On the own-key plan, after the free period, the weekly search' : 'The weekly search'} runs on your own AI provider account, so its cost (typically about {modelList[0]?.typicalCostUsd != null ? `US$${modelList[0].typicalCostUsd.toFixed(2)}` : 'a few dollars'} a week) is billed to you. Your key is stored in a secure key vault. It is never shown again, and only its last four characters are kept here.</p>
 			{c.configured && (
 				<dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
 					<dt className="text-muted">Model</dt><dd>{modelList.find((m) => m.model == c.model)?.label ?? c.model}</dd>

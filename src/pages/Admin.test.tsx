@@ -29,3 +29,19 @@ test('someone who is not a programme admin is sent away from /admin', async () =
 	const {router} = renderApp('/admin')
 	await waitFor(() => expect(router.state.location.pathname).toBe(`/companies/${COMPANY_ID}`))
 })
+
+test('BEH-016 the Free period card warns when the AI cap cannot cover the subscribers, and companies show their plan', async () => {
+	mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /models': {body: {models: [{provider: 'anthropic', model: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', benchmarkCoverage: 30, benchmarkOutOf: 36, typicalCostUsd: 4}]}},
+		'GET /admin/programme-key': {body: {credential: {configured: false}, freePeriodUntil: '2027-01-31', monthlyCapUsd: 100, subscribers: 4}},
+		'GET /admin/companies': {body: {companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', created_at: '2026-10-01', members: 1, has_profile: true,
+			key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null,
+			billing_plan: 'subscription', billing_status: 'past_due'}]}},
+	})
+	renderApp('/admin')
+	const free = await card('Free period (programme pays the AI model)')
+	expect(await free.findByText(/4 companies subscribe\. .*raise it to at least US\$120/)).toBeInTheDocument()
+	const companies = await card('Companies')
+	expect(await companies.findByText('Subscription: past due')).toBeInTheDocument()
+})

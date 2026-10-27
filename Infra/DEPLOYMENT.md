@@ -164,7 +164,7 @@ Then sign in at the app URL (needs step 2's email link). Companies and their use
 2. Sign in as a programme admin. Under **Free period**, choose **Add key** and paste it. It is checked with a free call, stored in the keys vault, and never shown again.
 3. Set **Free until** (for three months from launch, the last Sunday you want covered) and the **Monthly AI spend cap**. About US$4 per company per week at today's usage.
 
-Companies are told from four weeks before the end. After the end date, runs use each company's own key again. Clearing **Free until** ends the free period from the next company run (a run already under way finishes on the programme key).
+Companies are told from four weeks before the end. After the end date, each company's runs follow its plan (step 11, DEC-014): a subscriber stays on the programme key, an own-key company uses its key, and a company with neither is paused. Clearing **Free until** ends the free period from the next company run (a run already under way finishes on the programme key).
 
 When the workspace's spend limit is reached, runs are meant to be marked "programme key not working" rather than retried. The worker recognises Anthropic's "credit balance" message for certain; the spend-limit wording it matches ("usage limits") has not been checked against a real limit, so watch the first time the limit is hit.
 
@@ -213,6 +213,72 @@ Set `alertEmail` (and `monthlyBudget`, default 50) in `Infra/main.bicepparam` an
 - `budget-oppfinder-monthly`: Azure spend for the resource group, with emails at 80% and 100% of actual spend and at 100% of forecast. Free. Covers Azure only: AI spend has its own cap on the admin page, and Brave its monthly query cap.
 
 To see what fired: Azure portal, Monitor, Alerts; or run the rule's query in `log-oppfinder`.
+
+## 11. Billing (DEC-014)
+
+From 1 Feb 2027 each company needs a plan: a subscription (£30 a month or £300 a year) or the own-key platform fee (£10 a month or £100 a year), all excluding VAT. Billing stays off until the six Stripe settings are in place; until then the Plan card says plans cannot be bought yet. Do everything in Stripe's **test mode** first, then repeat it in live mode before 3 Jan 2027, when checkout opens.
+
+1. **Account.** Create the Stripe account for The Data Innovation Hub with the UK as its country, and complete activation.
+2. **Tax.** Under Tax, turn on Stripe Tax, add the UK VAT registration, and set prices to exclude tax.
+3. **Products and prices.** Create two products, each with two recurring GBP prices, tax behaviour **exclusive**:
+   - "Opportunity Finder subscription": £30.00 monthly and £300.00 yearly;
+   - "Opportunity Finder platform fee (own AI key)": £10.00 monthly and £100.00 yearly.
+
+   Note the four price ids (`price_...`). They must match `Backend/Services/Plans.js`, and the notice wording in `Backend/Services/Mail.js` and `src/components/Layout.tsx`.
+4. **Customer portal.** Under Settings → Billing → Customer portal, allow:
+   - updating the payment method;
+   - viewing invoices;
+   - cancelling at the end of the period;
+   - switching between the four prices.
+
+   Set the return link to `https://opportunities.thedatainnovationhub.com`.
+5. **Webhook.** Under Developers → Webhooks, add the endpoint `https://opportunities.thedatainnovationhub.com/api/stripe/webhook` with these events:
+   - `checkout.session.completed`;
+   - `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`;
+   - `invoice.paid` and `invoice.payment_failed`.
+
+   Copy its signing secret (`whsec_...`).
+6. **Restricted key.** Under Developers → API keys, create a restricted key with these permissions:
+
+   | Resource | Permission |
+   |---|---|
+   | Customers | Write |
+   | Checkout Sessions | Write |
+   | Customer portal | Write |
+   | Subscriptions | Read |
+   | Prices | Read |
+
+7. **Secrets.** Store the key and the signing secret in the app vault. Each is pasted at a hidden prompt, in one go:
+
+```bash
+read -s STRIPE_KEY && az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name <appVaultName> -n stripe-secret-key --value "$STRIPE_KEY" -o none && unset STRIPE_KEY && echo ok
+```
+
+```bash
+read -s STRIPE_WHSEC && az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name <appVaultName> -n stripe-webhook-secret --value "$STRIPE_WHSEC" -o none && unset STRIPE_WHSEC && echo ok
+```
+
+8. **Turn it on.** In `Infra/main.bicepparam`, set `enableBilling = true` and the four `stripePrice...` ids, then deploy as in step 6.
+9. **Raise the programme cap.** Raise the monthly AI cap on the Admin page before 1 Feb 2027. Subscribers run on the programme key with no cap of their own, so allow about US$30 per subscriber. The Free period card warns when the cap is lower than that.
+
+**Test-mode check before going live.** With test keys deployed:
+1. Sign in as a test company admin and choose a plan. Pay with Stripe's test card `4242 4242 4242 4242`.
+2. Check that the Plan card shows the plan.
+3. Check that the Admin page shows it in the company's row.
+4. Check that the webhook endpoint in Stripe shows 200 responses.
+5. Cancel the plan in the portal and check the card follows.
+
+Then replace both secrets and the price ids with the live ones and deploy again.
+
+Billing changes are logged without amounts or card details. The failures alert also fires on these events:
+- `billing_duplicate_subscription`: a company has two live subscriptions; refund one in Stripe;
+- `billing_unknown_customer`;
+- `billing_unknown_price`.
+
+**Release with migration 0006.** The new code needs migration 0006, so migrate before switching the API and the other jobs:
+1. Run `az containerapp job update --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n job-oppfinder-migrate --image <new image>`.
+2. Start the migration job.
+3. Once it has succeeded, update the API and the other jobs.
 
 ## Each release
 

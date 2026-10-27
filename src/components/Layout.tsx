@@ -39,7 +39,7 @@ export const Layout = () => {
 		>
 			{me.data.freePeriod && me.data.companies.length > 0 && daysUntil(me.data.freePeriod.until) <= FREE_PERIOD_NOTICE_DAYS && (
 				<div className="mb-6"><Notice tone="warn">
-					The programme covers the AI cost of your weekly reports until {formatDate(me.data.freePeriod.until)}. After that, reports need your own AI provider key: a company admin can add it under Settings.
+					The programme covers the AI cost of your weekly reports until {formatDate(me.data.freePeriod.until)}. To keep them after that, a company admin chooses a plan under Settings: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT). Choosing now costs nothing until then.
 				</Notice></div>
 			)}
 			<Outlet />

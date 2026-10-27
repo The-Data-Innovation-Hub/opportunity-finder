@@ -90,10 +90,13 @@ export type ProgrammeKey = {
 		checkedAt: string, addedAt: string, addedBy: string | null}
 	freePeriodUntil: string | null
 	monthlyCapUsd: number
+	// DEC-014: companies on a live subscription, who run on this key.
+	subscribers: number
 }
 export type ServiceSettings = {searchEnabled: boolean, bravePricePer1000Usd: number, monthlyQueryCap: number, reviewDate: string, updatedAt: string}
 export type AdminCompany = {id: string, name: string, status: 'active' | 'paused', created_at: string, members: number, has_profile: boolean,
-	key_status: string | null, provider: string | null, model: string | null, last_run_week: string | null, last_run_status: string | null, last_run_skip_reason: string | null}
+	key_status: string | null, provider: string | null, model: string | null, last_run_week: string | null, last_run_status: string | null, last_run_skip_reason: string | null,
+	billing_plan: Plan | null, billing_status: string | null}
 // A company as just created, before it has members or runs.
 export type NewCompany = Pick<AdminCompany, 'id' | 'name' | 'status' | 'created_at'>
 export type AdminRun = {company_id: string, company: string, status: string, skip_reason: string | null, error_code: string | null, provider: string | null,
@@ -101,6 +104,24 @@ export type AdminRun = {company_id: string, company: string, status: string, ski
 	model_cost_usd: string, paid_by: 'company' | 'programme', search_queries: number, search_cost_usd: string, page_reads: number,
 	funding_rows: number | null, tender_rows: number | null, new_this_week: number | null}
 export type AdminRuns = {gather: null | {week_start: string, status: string, started_at: string | null, finished_at: string | null, tender_notices: number | null, funder_pages: number | null, competitions: number | null}, runs: AdminRun[]}
+
+// DEC-014: the plans a company chooses from when the free period ends.
+export type Plan = 'subscription' | 'own_key'
+export type BillingInterval = 'month' | 'year'
+export type Billing = {
+	billing: null | {plan: Plan, interval: BillingInterval, live: boolean, currentPeriodEnd: string | null, cancelAtPeriodEnd: boolean,
+		status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid' | 'incomplete' | 'incomplete_expired' | 'paused'}
+	// A Stripe customer exists, so the portal can open.
+	hasAccount: boolean
+	// Stripe is set up on the server.
+	available: boolean
+	// Pence, excluding VAT.
+	prices: Record<Plan, Record<BillingInterval, number>>
+	freePeriodUntil: string | null
+	checkoutOpensOn: string | null
+	// Null when no free period is set: every company uses its own key.
+	plansRequiredFrom: string | null
+}
 
 export type ProgrammeSkip = {week: string, reason: 'programme_key_problem' | 'programme_budget_reached'} | null
 
@@ -120,6 +141,10 @@ export type Responses = {
 	'PUT /companies/:companyId/llm-credential': {credential: Credential}
 	'DELETE /companies/:companyId/llm-credential': {credential: Credential}
 	'GET /companies/:companyId/members': {members: Member[]}
+	'GET /companies/:companyId/billing': Billing
+	'POST /companies/:companyId/billing/checkout': {url: string}
+	'POST /companies/:companyId/billing/portal': {url: string}
+	'POST /companies/:companyId/billing/sync': Billing
 	'GET /admin/companies': {companies: AdminCompany[]}
 	'POST /admin/companies': {company: NewCompany}
 	'GET /admin/runs': AdminRuns

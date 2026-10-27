@@ -1,8 +1,8 @@
-import {expect, test} from 'vitest'
+import {afterEach, expect, test, vi} from 'vitest'
 import {screen} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {COMPANY_ID, meAs, mockApi, renderApp, type ApiRoutes} from '../test/app'
-import type {Role} from '../api'
+import type {Billing, Role} from '../api'
 
 const base = `/companies/${COMPANY_ID}`
 const routes = (role: Role, extra: ApiRoutes = {}): ApiRoutes => ({
@@ -14,8 +14,16 @@ const routes = (role: Role, extra: ApiRoutes = {}): ApiRoutes => ({
 		{id: 'u1', email: 'founder@example.test', display_name: null, role, created_at: '2026-10-01', has_signed_in: true},
 		{id: 'u2', email: 'colleague@example.test', display_name: null, role: 'company_member', created_at: '2026-10-02', has_signed_in: false},
 	]}},
+	[`GET ${base}/billing`]: {body: billing()},
 	...extra,
 })
+// DEC-014: no free period set, so no plan is needed and the card is hidden.
+const billing = (over: Partial<Billing> = {}): Billing => ({billing: null, hasAccount: false, available: true,
+	prices: {subscription: {month: 3000, year: 30000}, own_key: {month: 1000, year: 10000}},
+	freePeriodUntil: null, checkoutOpensOn: null, plansRequiredFrom: null, ...over})
+const ending = {freePeriodUntil: '2027-01-31', checkoutOpensOn: '2027-01-03', plansRequiredFrom: '2027-02-01'}
+const on = (day: string) => vi.useFakeTimers({toFake: ['Date'], now: new Date(`${day}T10:00:00Z`)})
+afterEach(() => { vi.useRealTimers() })
 
 test('a member sees the settings read-only, with no way to change them', async () => {
 	mockApi(routes('company_member'))
@@ -66,4 +74,53 @@ test('saving the profile sends lists split by line and by comma', async () => {
 		cpv_prefixes: [],
 		details: {customers: ['Health trusts', 'Care agencies']},
 	})
+})
+
+test('BEH-016 before checkout opens the plans and prices show, but cannot be bought yet', async () => {
+	on('2026-12-01')
+	mockApi(routes('company_admin', {[`GET ${base}/billing`]: {body: billing(ending)}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('Plans can be chosen from 3 Jan 2027.')).toBeInTheDocument()
+	expect(screen.getByText('£30 a month')).toBeInTheDocument()
+	expect(screen.getByText('£10 a month')).toBeInTheDocument()
+	expect(screen.getByRole('button', {name: 'Choose subscription'})).toBeDisabled()
+})
+
+test('BEH-016 an admin chooses the yearly own-key plan and is sent to Stripe Checkout', async () => {
+	on('2027-01-10')
+	const user = userEvent.setup()
+	const calls = mockApi(routes('company_admin', {[`GET ${base}/billing`]: {body: billing(ending)},
+		[`POST ${base}/billing/checkout`]: {body: {url: 'https://checkout.stripe.test/session'}}}))
+	renderApp(`${base}/settings`)
+	await user.click(await screen.findByRole('button', {name: 'Yearly (two months free)'}))
+	expect(screen.getByText('£300 a year')).toBeInTheDocument()
+	await user.click(screen.getByRole('button', {name: 'Choose own AI key'}))
+	await vi.waitFor(() => expect(calls.find((c) => c.method == 'POST')?.body).toEqual({plan: 'own_key', interval: 'year'}))
+})
+
+test('BEH-016 a member sees the plans but only admins can choose one', async () => {
+	on('2027-01-10')
+	mockApi(routes('company_member', {[`GET ${base}/billing`]: {body: billing(ending)}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('Only your company admins can choose a plan.')).toBeInTheDocument()
+	expect(screen.queryByRole('button', {name: 'Choose subscription'})).toBeNull()
+})
+
+test('BEH-016 a subscriber in its trial sees when the first payment is, can manage billing, and needs no key', async () => {
+	on('2027-01-10')
+	mockApi(routes('company_admin', {[`GET ${base}/billing`]: {body: billing({...ending, hasAccount: true,
+		billing: {plan: 'subscription', interval: 'month', status: 'trialing', live: true, currentPeriodEnd: '2027-02-01T00:00:00Z', cancelAtPeriodEnd: false}})}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('Subscription, £30 a month')).toBeInTheDocument()
+	expect(screen.getByText('1 Feb 2027')).toBeInTheDocument()
+	expect(screen.getByRole('button', {name: 'Manage billing'})).toBeInTheDocument()
+	expect(await screen.findByText('Not needed: your subscription covers the AI')).toBeInTheDocument()
+})
+
+test('BEH-017 after the free period a company without a plan is told its runs are paused', async () => {
+	on('2027-02-03')
+	mockApi(routes('company_admin', {[`GET ${base}/billing`]: {body: billing(ending)}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('No plan: weekly runs are paused')).toBeInTheDocument()
+	expect(screen.getByText(/Your weekly reports are paused until a company admin chooses a plan/)).toBeInTheDocument()
 })

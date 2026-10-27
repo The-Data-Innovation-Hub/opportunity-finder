@@ -286,14 +286,18 @@ test('DEC-011 in the free period every company runs on the programme key, with o
 	await endFreePeriod()
 })
 
-test('DEC-011 after the free period, companies are back on their own keys', async () => {
+test('DEC-011 and DEC-014 after the free period, an own-key plan runs on the company\'s own key; no plan, no run', async () => {
 	const own = await company('N Ltd')
 	const none = await company('O Ltd', {key: false})
+	const unplanned = await company('O2 Ltd')
+	for (const id of [own, none]) await q(`INSERT INTO company_billing (company_id, stripe_customer_id, stripe_subscription_id, plan, billing_interval, status)
+		VALUES ($1, $2, $3, 'own_key', 'month', 'active')`, [id, `cus_${id}`, `sub_${id}`])
 	await freePeriod({until: '2026-12-13'})
 	providerCalls = []
 	const {outcomes} = await runWeek({pool: worker, secrets, blobs, fetchers, now: new Date('2026-12-13T22:00:00Z'), providers: () => scriptedProvider(), ...silent})
 	assert.equal(outcomes[own].status, 'succeeded')
 	assert.equal(outcomes[none].reason, 'no_key')
+	assert.equal(outcomes[unplanned].reason, 'no_plan')
 	assert.equal((await runOf(own, '2026-12-14')).paid_by, 'company')
 	assert.ok(providerCalls.every((c) => c.apiKey != PROGRAMME_KEY))
 	await endFreePeriod()

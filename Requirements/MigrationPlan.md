@@ -81,6 +81,18 @@
 - Rollback: `REVOKE UPDATE (name) ON company FROM of_api`.
 - Execution: applied to local `opportunity_finder_dev` and test databases, 26 Oct 2026.
 
+## 0006_Billing.sql (DEC-014)
+
+| Operation | Compatibility | Lock/rewrite risk | Data-loss risk | Validation |
+|---|---|---|---|---|
+| `CREATE TABLE company_billing` (`company_id` PK and FK, `stripe_customer_id` unique, `stripe_subscription_id` unique or null, `plan` check `subscription`/`own_key`, `interval` check `month`/`year`, `status` text, `current_period_end`, `cancel_at_period_end`, `updated_at`) | Additive; the old image ignores it | New table only | None | DB tests for webhook upserts and run gating |
+| `CREATE TABLE stripe_event` (`id` text PK, `type`, `received_at`) | Additive | New table only | None | Webhook replay test |
+| Grants: `of_api` SELECT, INSERT and UPDATE on both; `of_worker` SELECT on `company_billing` (skipped where a role does not exist, as 0003) | Additive | Catalog change only | None | Tests run as the runtime roles |
+
+- Order: migration, then image. The new image reads `company_billing`; the old one never does. Until 3 Jan nobody can check out, so the table stays empty, and in the free period the run gating behaves as now.
+- Rollback: the old image ignores the tables; `DROP TABLE stripe_event, company_billing` only if no live subscription exists, since the table is the only link from a company to its Stripe customer.
+- Execution: applied to disposable `of_test_*` databases by `npm run test:db` (clean install with every migration), 27 Oct 2026. Not yet run on `opportunity_finder_dev` or Azure.
+
 ## Verification evidence
 
 - Clean install result: passed on a disposable local PostgreSQL 16.15 database, 23 Oct 2026 (`npm run test:db`, 7 pass).

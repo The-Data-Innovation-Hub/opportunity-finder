@@ -46,6 +46,8 @@ Open http://localhost:5173 and ask for a sign-in link for `founder@example.test`
 
 To see the free period (DEC-011) as companies and admins do, switch the dev database between its states with `cd Backend && npm run dev:free-period -- <covered|no-key|budget|off>`, then reload the app.
 
+Plans after the free period (DEC-014) are bought on Stripe Checkout. Billing is off unless the six `STRIPE_*` settings in `Backend/.env.example` are set; use Stripe test-mode keys locally, with `stripe listen --forward-to localhost:3001/api/stripe/webhook` to receive webhooks. Tests use the in-memory stand-in in `Backend/Services/Billing.js` and never call Stripe. Setup on Azure: `Infra/DEPLOYMENT.md`, step 11.
+
 The weekly job needs the scraper (`cd scraper && .venv/bin/uvicorn main:app --port 8080`), a Brave key, and a company with a real provider key, and it costs money, so it is not part of local start-up. Trial runs use `Backend/Worker/trial.js`.
 
 ## Tests

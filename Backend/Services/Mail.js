@@ -54,7 +54,7 @@ export const invitationEmail = ({link, companyName, days}) => ({
 })
 
 const longDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'})
-const freePeriodNotice = (until) => `The programme is covering the AI cost of these reports until ${longDate(until)}. To keep receiving them after that, a company admin adds your own AI provider key in Settings.`
+const freePeriodNotice = (until) => `The programme is covering the AI cost of these reports until ${longDate(until)}. To keep receiving them after that, a company admin chooses a plan in Settings: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT). Choosing now costs nothing until then.`
 
 export const weeklyReportEmail = ({companyName, link, fundingRows, tenderRows, newThisWeek, topFive, freePeriodEnds = null, settingsLink}) => ({
 	subject: `${companyName}: this week's funding and tenders (${newThisWeek} new)`,
