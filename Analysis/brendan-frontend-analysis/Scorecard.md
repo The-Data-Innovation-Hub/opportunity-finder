@@ -78,5 +78,7 @@ These were fixed after this review, at `36e593a`. The scores, findings and verdi
 | A11Y-001 | `5839110` | The Funding/Tenders switch is `aria-pressed` buttons in a group |
 | A11Y-002 | `5839110` | "Signed in as" is visually hidden text |
 | UIC-001 | `5839110` | Tints come from `@theme` tokens; Tailwind scans `src` only |
+| ARC-001 | `29fcdcd` | Oxlint with React hooks and jsx-a11y rules, run in CI (ESLint's TypeScript parser does not support TypeScript 7) |
+| TST-001 | PR #1 | 21 Vitest component and page tests and a Playwright sign-in → report journey, both run in CI |
 
-Still open: TST-001, TYP-001 and ARC-001. A re-run of this analysis would re-score the frontend.
+Still open: TYP-001. A re-run of this analysis would re-score the frontend.
