@@ -1,6 +1,6 @@
 # Opportunity Finder
 
-Weekly funding and tender reports for the companies on The Data Innovation Hub's programme. Every Sunday night, for each company, a model on the company's own AI provider account searches Northern Ireland, Ireland and UK funders and tender portals against that company's profile. On Monday morning the company gets an email and can view and download the report (the same layout as the sample spreadsheet). Programme admins manage companies and see run summaries and the service's running cost, never report content.
+Weekly funding and tender reports for the companies on The Data Innovation Hub's programme. Every Sunday night, for each company, a model on the company's own AI provider account searches Northern Ireland, Ireland and UK funders and tender portals against that company's profile. On Monday morning the company gets an email and can view and download the report. A new company does not wait for Sunday: its first report runs within 15 minutes of its profile being saved (the same layout as the sample spreadsheet). Programme admins manage companies and see run summaries and the service's running cost, never report content.
 
 Requirements: `Requirements/Requirements.md`. Design: `Requirements/ArchitectureProposal.md`. Deployment: `Infra/DEPLOYMENT.md`.
 

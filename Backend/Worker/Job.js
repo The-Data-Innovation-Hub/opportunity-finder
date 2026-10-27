@@ -2,6 +2,7 @@
 //
 //   node Worker/Job.js weekly       Sunday 22:00 UK: gather, then every company's run
 //   node Worker/Job.js emails       Monday 07:00 UK: the weekly report email
+//   node Worker/Job.js first-reports every 15 min: a new company's first report, then its email
 //   node Worker/Job.js cleanup      daily: 13-week retention, expired tokens and sessions
 //   node Worker/Job.js azure-cost   daily: hosting cost for the admin card
 //
@@ -14,12 +15,12 @@ import {fetchTenderNotices} from './Sources/ocds.js'
 import {fetchEtendersIreland, fetchFindAGrant} from './Sources/scraper.js'
 import {gatherFunderPages} from './Sources/pages.js'
 import {REGIONS} from './Research/search.js'
-import {runWeek, sendWeeklyEmails, cleanup, targetWeek} from './Weekly.js'
+import {runWeek, runFirstReports, sendWeeklyEmails, cleanup, targetWeek} from './Weekly.js'
 import {collectAzureCost, fetchDailyCost} from './AzureCost.js'
 import {logLine} from '../API/Library.js'
 
 const command = process.argv[2]
-const commands = ['weekly', 'emails', 'cleanup', 'azure-cost']
+const commands = ['weekly', 'first-reports', 'emails', 'cleanup', 'azure-cost']
 if (!commands.includes(command)) {
 	console.error(`[job] usage: node Worker/Job.js ${commands.join('|')}`)
 	process.exit(2)
@@ -29,17 +30,21 @@ const log = (message) => logLine({event: 'job', command, message})
 const pool = createPool({connectionString: process.env.OPPORTUNITY_FINDER_WORKER_DATABASE_URL ?? process.env.OPPORTUNITY_FINDER_DATABASE_URL, max: 8, statementTimeout: 120000})
 
 try {
+	const fetchers = {
+		tenders: fetchTenderNotices,
+		ieTenders: fetchEtendersIreland,
+		grants: fetchFindAGrant,
+		funderPages: ({log}) => gatherFunderPages({regions: REGIONS, log}),
+	}
 	if (command == 'weekly') {
-		const fetchers = {
-			tenders: fetchTenderNotices,
-			ieTenders: fetchEtendersIreland,
-			grants: fetchFindAGrant,
-			funderPages: ({log}) => gatherFunderPages({regions: REGIONS, log}),
-		}
 		const {week, outcomes} = await runWeek({pool, secrets: createSecretStore(), blobs: createBlobStore(), fetchers, log})
 		const counts = Object.values(outcomes).reduce((c, o) => ({...c, [o.status]: (c[o.status] ?? 0) + 1}), {})
 		log(`week ${week}: ${JSON.stringify(counts)}`)
 		if (counts.failed) process.exitCode = 1
+	} else if (command == 'first-reports') {
+		const {outcomes} = await runFirstReports({pool, secrets: createSecretStore(), blobs: createBlobStore(), fetchers,
+			mailer: createMailer(), appUrl: process.env.APP_URL, emailFor: weeklyReportEmail, log})
+		if (Object.values(outcomes).some((o) => o.status == 'failed')) process.exitCode = 1
 	} else if (command == 'emails') {
 		// The Monday job sends the week that started today.
 		const week = targetWeek(new Date(Date.now() - 864e5))

@@ -12,7 +12,9 @@ const REGION_NAMES: Record<Region, string> = {NI: 'Northern Ireland', IE: 'Irela
 export const CompanyReport = ({companyId, reportId}: {companyId: string, reportId?: string}) => {
 	const me = useMe()
 	const company = me.data?.companies.find((c) => c.id == companyId)
-	const reports = useQuery({queryKey: ['reports', companyId], queryFn: () => api.get<{reports: ReportSummary[]}>(`/companies/${companyId}/reports?limit=13`)})
+	// Until the first report exists, look again every minute so it appears without a reload.
+	const reports = useQuery({queryKey: ['reports', companyId], queryFn: () => api.get<{reports: ReportSummary[]}>(`/companies/${companyId}/reports?limit=13`),
+		refetchInterval: (query) => query.state.data?.reports.length == 0 ? 60_000 : false})
 	const selectedId = reportId ?? reports.data?.reports[0]?.id
 
 	if (!company) return <Empty title="Company not found">You may not have access to it. <Link to="/" className="text-brand underline">Go back</Link></Empty>
@@ -43,7 +45,7 @@ const NoReportYet = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 	]
 	return (
 		<Card title="Your first report">
-			<p className="text-sm text-muted">Reports are prepared every Sunday night and emailed on Monday morning.</p>
+			<p className="text-sm text-muted">Your first report starts within 15 minutes of finishing these steps and is emailed when ready, usually within the hour. On a Sunday it waits for that night's run. After that, reports are prepared every Sunday night and emailed on Monday morning.</p>
 			<ol className="mt-4 space-y-2">
 				{steps.map((s) => (
 					<li key={s.label} className="flex items-center gap-2 text-sm">
@@ -56,7 +58,7 @@ const NoReportYet = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean}
 			{steps.some((s) => !s.done) && (isAdmin
 				? <Link to="/companies/$companyId/settings" params={{companyId}} className="mt-4 inline-block font-medium text-brand underline">Go to settings</Link>
 				: <p className="mt-4 text-sm text-muted">Your company admin can finish these in Settings.</p>)}
-			{steps.every((s) => s.done) && <Notice tone="good">All set. Your first report will arrive after the next Sunday run.</Notice>}
+			{steps.every((s) => s.done) && <Notice tone="good">All set. Your first report is being prepared; we will email you when it is ready.</Notice>}
 		</Card>
 	)
 }
