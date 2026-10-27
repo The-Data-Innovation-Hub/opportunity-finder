@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {Navigate} from '@tanstack/react-router'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {api, daysUntil, formatDate, money, type AdminCompany, type AdminRuns, type Model, type ProgrammeKey, type Role, type ServiceCost, type ServiceSettings} from '../api'
+import {api, daysUntil, formatDate, money, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, Notice, Select} from '../components/ui'
 import {CostCard} from '../components/CostCard'
@@ -25,7 +25,7 @@ export const Admin = () => {
 }
 
 const Cost = () => {
-	const cost = useQuery({queryKey: ['admin', 'cost'], queryFn: () => api.get<ServiceCost>('/admin/service-cost')})
+	const cost = useQuery({queryKey: ['admin', 'cost'], queryFn: () => api.get<Responses['GET /admin/service-cost']>('/admin/service-cost')})
 	if (cost.isPending) return <Card title="Service cost"><Loading /></Card>
 	if (cost.error) return <Card title="Service cost"><ErrorBox error={cost.error} onRetry={() => cost.refetch()} /></Card>
 	return <CostCard cost={cost.data} />
@@ -37,11 +37,11 @@ const SKIP_REASONS: Record<string, string> = {no_key: 'no API key', invalid_key:
 
 const Companies = () => {
 	const queryClient = useQueryClient()
-	const companies = useQuery({queryKey: ['admin', 'companies'], queryFn: () => api.get<{companies: AdminCompany[]}>('/admin/companies')})
+	const companies = useQuery({queryKey: ['admin', 'companies'], queryFn: () => api.get<Responses['GET /admin/companies']>('/admin/companies')})
 	const [name, setName] = useState('')
-	const [inviting, setInviting] = useState<AdminCompany | null>(null)
+	const [inviting, setInviting] = useState<NewCompany | null>(null)
 	const refresh = () => queryClient.invalidateQueries({queryKey: ['admin', 'companies']})
-	const create = useMutation({mutationFn: () => api.post<{company: AdminCompany}>('/admin/companies', {name}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
+	const create = useMutation({mutationFn: () => api.post<Responses['POST /admin/companies']>('/admin/companies', {name}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
 	const setStatus = useMutation({mutationFn: ({id, status}: {id: string, status: string}) => api.patch(`/admin/companies/${id}`, {status}), onSuccess: refresh})
 	const [renaming, setRenaming] = useState<{id: string, name: string} | null>(null)
 	const rename = useMutation({mutationFn: ({id, name: newName}: {id: string, name: string}) => api.patch(`/admin/companies/${id}`, {name: newName}), onSuccess: () => { setRenaming(null); refresh() }})
@@ -104,7 +104,7 @@ const Companies = () => {
 	)
 }
 
-const Invite = ({company, onDone}: {company: AdminCompany, onDone: () => void}) => {
+const Invite = ({company, onDone}: {company: NewCompany, onDone: () => void}) => {
 	const [email, setEmail] = useState('')
 	const [role, setRole] = useState<Role>('company_admin')
 	const [sent, setSent] = useState<string | null>(null)
@@ -125,7 +125,7 @@ const Invite = ({company, onDone}: {company: AdminCompany, onDone: () => void}) 
 }
 
 const Runs = () => {
-	const runs = useQuery({queryKey: ['admin', 'runs'], queryFn: () => api.get<AdminRuns>('/admin/runs')})
+	const runs = useQuery({queryKey: ['admin', 'runs'], queryFn: () => api.get<Responses['GET /admin/runs']>('/admin/runs')})
 	if (runs.isPending) return <Card title="Latest weekly run"><Loading /></Card>
 	if (runs.error) return <Card title="Latest weekly run"><ErrorBox error={runs.error} /></Card>
 	const {gather, runs: rows} = runs.data
@@ -158,13 +158,13 @@ const Runs = () => {
 
 const Settings = () => {
 	const queryClient = useQueryClient()
-	const settings = useQuery({queryKey: ['admin', 'settings'], queryFn: () => api.get<{settings: ServiceSettings}>('/admin/service-settings')})
+	const settings = useQuery({queryKey: ['admin', 'settings'], queryFn: () => api.get<Responses['GET /admin/service-settings']>('/admin/service-settings')})
 	const [form, setForm] = useState<ServiceSettings | null>(null)
 	const [saved, setSaved] = useState(false)
 	// oxlint-disable-next-line react/set-state-in-effect -- seeds the editable form once the query loads
 	useEffect(() => { if (settings.data) setForm(settings.data.settings) }, [settings.data])
 	const save = useMutation({
-		mutationFn: () => api.put<{settings: ServiceSettings}>('/admin/service-settings', {...form, reviewDate: form!.reviewDate.slice(0, 10)}),
+		mutationFn: () => api.put<Responses['PUT /admin/service-settings']>('/admin/service-settings', {...form, reviewDate: form!.reviewDate.slice(0, 10)}),
 		onSuccess: (d) => { queryClient.setQueryData(['admin', 'settings'], d); queryClient.invalidateQueries({queryKey: ['admin', 'cost']}); setSaved(true) },
 	})
 	// The error check comes first: after a failed first load form stays null.
@@ -201,8 +201,8 @@ const keyBadge = (p: ProgrammeKey) => !p.credential.configured ? <Badge tone="wa
 
 const FreePeriod = () => {
 	const queryClient = useQueryClient()
-	const programme = useQuery({queryKey: ['admin', 'programme-key'], queryFn: () => api.get<ProgrammeKey>('/admin/programme-key')})
-	const models = useQuery({queryKey: ['models'], queryFn: () => api.get<{models: Model[]}>('/models')})
+	const programme = useQuery({queryKey: ['admin', 'programme-key'], queryFn: () => api.get<Responses['GET /admin/programme-key']>('/admin/programme-key')})
+	const models = useQuery({queryKey: ['models'], queryFn: () => api.get<Responses['GET /models']>('/models')})
 	const [form, setForm] = useState<{until: string, cap: number} | null>(null)
 	const [saved, setSaved] = useState(false)
 	const [choice, setChoice] = useState('')
@@ -212,19 +212,19 @@ const FreePeriod = () => {
 	useEffect(() => { if (programme.data) setForm({until: programme.data.freePeriodUntil ?? '', cap: programme.data.monthlyCapUsd}) }, [programme.data])
 	const refresh = (d: ProgrammeKey) => { queryClient.setQueryData(['admin', 'programme-key'], d); queryClient.invalidateQueries({queryKey: ['admin', 'cost']}) }
 	const saveSettings = useMutation({
-		mutationFn: () => api.put<ProgrammeKey>('/admin/programme-key/settings', {freePeriodUntil: form!.until || null, monthlyCapUsd: form!.cap}),
+		mutationFn: () => api.put<Responses['PUT /admin/programme-key/settings']>('/admin/programme-key/settings', {freePeriodUntil: form!.until || null, monthlyCapUsd: form!.cap}),
 		onSuccess: (d) => { refresh(d); queryClient.invalidateQueries({queryKey: ['me']}); setSaved(true) },
 	})
 	const saveKey = useMutation({
 		mutationFn: () => {
 			const [provider, model] = (choice || `${models.data!.models[0].provider}/${models.data!.models[0].model}`).split('/')
-			return api.put<ProgrammeKey>('/admin/programme-key/credential', {provider, model, apiKey})
+			return api.put<Responses['PUT /admin/programme-key/credential']>('/admin/programme-key/credential', {provider, model, apiKey})
 		},
 		onSuccess: (d) => { refresh(d); setApiKey(''); setEditing(false) },
 		// Cleared on failure too, so the key does not linger in the page.
 		onError: () => setApiKey(''),
 	})
-	const removeKey = useMutation({mutationFn: () => api.delete<ProgrammeKey>('/admin/programme-key/credential'), onSuccess: refresh})
+	const removeKey = useMutation({mutationFn: () => api.delete<Responses['DELETE /admin/programme-key/credential']>('/admin/programme-key/credential'), onSuccess: refresh})
 
 	const title = 'Free period (programme pays the AI model)'
 	if (programme.error || models.error) return <Card title={title}><ErrorBox error={programme.error ?? models.error} onRetry={() => { if (programme.error) programme.refetch(); if (models.error) models.refetch() }} /></Card>

@@ -80,5 +80,6 @@ These were fixed after this review, at `36e593a`. The scores, findings and verdi
 | UIC-001 | `5839110` | Tints come from `@theme` tokens; Tailwind scans `src` only |
 | ARC-001 | `29fcdcd` | Oxlint with React hooks and jsx-a11y rules, run in CI (ESLint's TypeScript parser does not support TypeScript 7) |
 | TST-001 | PR #1 | 21 Vitest component and page tests and a Playwright sign-in → report journey, both run in CI |
+| TYP-001 | PR #5 | Call sites typed from one `Responses` map in `src/api.ts`; CI captures real responses from every route on a seeded database and type checks them against it (`npm run test:contract`). It found five types out of step with the backend, now corrected |
 
-Still open: TYP-001. A re-run of this analysis would re-score the frontend.
+No finding is still open. A re-run of this analysis would re-score the frontend.

@@ -12,6 +12,7 @@
     "lint": "oxlint --deny-warnings src",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:contract": "node Backend/Tests/Contract/capture.js && tsc --noEmit -p tsconfig.contract.json",
     "preview": "vite preview"
   },
   "dependencies": {
