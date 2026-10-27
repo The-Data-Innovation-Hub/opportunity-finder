@@ -398,6 +398,23 @@ const runCompanies = async ({pool, secrets, blobs, week, gather, companies, now,
 
 // --- First report ---------------------------------------------------------------
 
+// A gather made before the EU calls were gathered (DAT-005) has none; read
+// them now and save them into the week's gather, so later first reports that
+// week reuse them. If the portal cannot be read, the run goes ahead without.
+const withEuCalls = async ({pool, blobs, week, gather, fetchers, log}) => {
+	if (!gather.funderPages || 'euCalls' in gather.funderPages || !fetchers.euCalls) return gather
+	try {
+		const euCalls = await fetchers.euCalls({log})
+		const updated = {...gather, funderPages: {...gather.funderPages, euCalls}}
+		const {rows: [row]} = await pool.query('SELECT blob_name FROM weekly_gather WHERE week_start = $1', [week])
+		await blobs.put(row.blob_name, Buffer.from(JSON.stringify(updated)), 'application/json')
+		return updated
+	} catch (error) {
+		log(`EU calls not read: ${error.message}`)
+		return gather
+	}
+}
+
 // A company that has just saved its first profile should not wait for
 // Sunday (BEH-015). A job every 15 minutes runs, for this week, each active
 // company with a profile that has no report and no run that got under way
@@ -421,7 +438,7 @@ export const runFirstReports = async ({pool, secrets, blobs, fetchers, mailer, a
 				ORDER BY c.created_at`)
 			if (!companies.length) return {week, outcomes: {}}
 			log(`first reports for ${companies.length} companies, week ${week}`)
-			const gather = await gatherWeek({pool, blobs, week, fetchers, now, log})
+			const gather = await withEuCalls({pool, blobs, week, gather: await gatherWeek({pool, blobs, week, fetchers, now, log}), fetchers, log})
 			const outcomes = await runCompanies({pool, secrets, blobs, week, gather, companies, now, providers, log})
 			const done = Object.keys(outcomes).filter((id) => outcomes[id].status == 'succeeded')
 			if (done.length) await sendWeeklyEmails({pool, mailer, appUrl, week, emailFor, companyIds: done, log})

@@ -151,3 +151,34 @@ test('BEH-015 while the weekly job holds its lock, the first-report job does not
 	const {outcomes} = await run(THURSDAY)
 	assert.equal(outcomes[later].status, 'succeeded')
 })
+
+test('DAT-005 a first report on a gather made before EU calls were gathered reads them once and saves them into the gather', async () => {
+	// The week of 2 Nov 2026, gathered without EU calls (as on 25 Oct 2026).
+	const week = '2026-11-02'
+	await q("INSERT INTO weekly_gather (week_start, status, blob_name) VALUES ($1, 'succeeded', 'gathers/2026-11-02.json')", [week])
+	await blobs.put('gathers/2026-11-02.json', Buffer.from(JSON.stringify({ukNotices: [], ieNotices: [], grants: [],
+		funderPages: {fetched_on: '2026-11-01', pages: [], competitions: []}})))
+	let reads = 0
+	const call = {identifier: 'HORIZON-EIC-2026-ACCELERATOR-01', programme: 'Horizon Europe', uk_eligible: true, cascade: false, title: 'EIC Accelerator 2026',
+		call: null, status: 'Open', opens: null, closes: '2026-11-04', deadline_model: null, action: null, url: 'https://ec.europa.eu/x', summary: '', amount: null}
+	const withEu = {...fetchers, euCalls: async () => { reads += 1; return [call] }}
+	// Records each request's message, to see the EU calls reach the model.
+	const prompts = []
+	const recording = () => {
+		const inner = scriptedProvider()
+		return {...inner, createProvider: (args) => {
+			const provider = inner.createProvider(args)
+			return {...provider, start: (request) => { prompts.push(JSON.stringify(request.content)); return provider.start(request) }}
+		}}
+	}
+	const go = (now) => runFirstReports({pool: worker, secrets, blobs, fetchers: withEu, mailer: createOutboxMailer({environment: 'test'}), appUrl: 'http://app.test',
+		emailFor: weeklyReportEmail, now, providers: recording})
+	const first = await company('Euro One Ltd')
+	assert.equal((await go(new Date('2026-11-04T10:00:00Z'))).outcomes[first].status, 'succeeded')
+	assert.equal(reads, 1)
+	assert.ok(prompts.some((p) => p.includes('EU calls shortlisted for this company (1)') && p.includes('EIC Accelerator 2026')))
+	assert.deepEqual(JSON.parse(String(blobs.store.get('gathers/2026-11-02.json'))).funderPages.euCalls.map((c) => c.identifier), [call.identifier])
+	const second = await company('Euro Two Ltd')
+	assert.equal((await go(new Date('2026-11-05T10:00:00Z'))).outcomes[second].status, 'succeeded')
+	assert.equal(reads, 1)
+})
