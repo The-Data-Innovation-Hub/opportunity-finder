@@ -14,6 +14,7 @@ import {createMailer, weeklyReportEmail} from '../Services/Mail.js'
 import {fetchTenderNotices} from './Sources/ocds.js'
 import {fetchEtendersIreland, fetchFindAGrant} from './Sources/scraper.js'
 import {gatherFunderPages} from './Sources/pages.js'
+import {fetchEuCalls} from './Sources/eu.js'
 import {REGIONS} from './Research/search.js'
 import {runWeek, runFirstReports, sendWeeklyEmails, cleanup, targetWeek} from './Weekly.js'
 import {collectAzureCost, fetchDailyCost} from './AzureCost.js'
@@ -35,6 +36,7 @@ try {
 		ieTenders: fetchEtendersIreland,
 		grants: fetchFindAGrant,
 		funderPages: ({log}) => gatherFunderPages({regions: REGIONS, log}),
+		euCalls: fetchEuCalls,
 	}
 	if (command == 'weekly') {
 		const {week, outcomes} = await runWeek({pool, secrets: createSecretStore(), blobs: createBlobStore(), fetchers, log})
