@@ -1,7 +1,8 @@
 // Mapping Stripe's objects to the platform's (DEC-014), without Stripe.
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {subscriptionIdOf, toSubscription} from '../Services/Billing.js'
+import {createServer} from 'node:http'
+import {BILLING_ENV, STRIPE_API_VERSION, createBilling, createFakeBilling, riskOf, subscriptionIdOf, toSubscription} from '../Services/Billing.js'
 import {londonMidnight} from '../API/Billing.js'
 
 const planOfPrice = (id) => ({price_sub_year: {plan: 'subscription', interval: 'year'}})[id] ?? null
@@ -23,10 +24,56 @@ test('DEC-014 events lead to their subscription; others to nothing', () => {
 	assert.equal(of('customer.subscription.deleted', {id: 'sub_2'}), 'sub_2')
 	assert.equal(of('invoice.paid', {parent: {subscription_details: {subscription: 'sub_3'}}}), 'sub_3')
 	assert.equal(of('invoice.payment_failed', {subscription: {id: 'sub_4'}}), 'sub_4')
+	assert.equal(of('checkout.session.async_payment_succeeded', {mode: 'subscription', subscription: 'sub_5'}), 'sub_5')
+	assert.equal(of('checkout.session.async_payment_failed', {mode: 'subscription', subscription: {id: 'sub_6'}}), 'sub_6')
+	assert.equal(of('checkout.session.expired', {mode: 'subscription', subscription: null}), null)
 	assert.equal(of('customer.created', {id: 'cus_1'}), null)
+})
+
+test('DEC-014 disputes, fraud warnings and refunds lead to their charge; others to nothing', () => {
+	const of = (type, object) => riskOf({type, data: {object}})
+	assert.deepEqual(of('charge.dispute.created', {id: 'dp_1', charge: 'ch_1', reason: 'fraudulent'}),
+		{kind: 'dispute', id: 'dp_1', chargeId: 'ch_1', reason: 'fraudulent'})
+	assert.deepEqual(of('radar.early_fraud_warning.created', {id: 'issfr_1', charge: {id: 'ch_2'}, fraud_type: 'misc'}),
+		{kind: 'fraud_warning', id: 'issfr_1', chargeId: 'ch_2', reason: 'misc'})
+	assert.deepEqual(of('charge.refunded', {id: 'ch_3', customer: {id: 'cus_1'}, refunded: false}),
+		{kind: 'refund', id: 'ch_3', chargeId: 'ch_3', customerId: 'cus_1', reason: 'partial'})
+	assert.equal(of('charge.succeeded', {id: 'ch_4'}), null)
+	assert.equal(of('invoice.paid', {id: 'in_1'}), null)
 })
 
 test('DEC-014 a trial ends at midnight UK time, in winter and in summer', () => {
 	assert.equal(londonMidnight('2027-02-01').toISOString(), '2027-02-01T00:00:00.000Z')
 	assert.equal(londonMidnight('2027-07-01').toISOString(), '2027-06-30T23:00:00.000Z')
+})
+
+test('DEC-014 the real client pins the API version, tags checkout sessions and offers every call the stand-in does', async () => {
+	const requests = []
+	const server = createServer((request, response) => {
+		let body = ''
+		request.on('data', (chunk) => { body += chunk })
+		request.on('end', () => {
+			requests.push({path: request.url, version: request.headers['stripe-version'], body: new URLSearchParams(body)})
+			response.setHeader('content-type', 'application/json')
+			response.end(JSON.stringify(request.url.startsWith('/v1/charges/') ? {id: 'ch_1', object: 'charge', customer: 'cus_1'} : {id: 'cs_1', url: 'https://checkout.stripe.test/cs_1'}))
+		})
+	})
+	await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+	try {
+		const env = Object.fromEntries(BILLING_ENV.map((name) => [name, `${name.toLowerCase()}_test`]))
+		const billing = createBilling(env, {host: '127.0.0.1', port: server.address().port, protocol: 'http', maxNetworkRetries: 0})
+		const helpers = ['calls', 'customers', 'subscriptions', 'charges', 'webhookSecret', 'setSubscription', 'setCharge', 'signed']
+		assert.deepEqual(Object.keys(billing).toSorted(), Object.keys(createFakeBilling()).filter((k) => !helpers.includes(k)).toSorted())
+		assert.equal(await billing.checkoutUrl({customerId: 'cus_1', companyId: 'co_1', plan: 'subscription', interval: 'year', trialEnd: null,
+			successUrl: 'https://app.test/done', cancelUrl: 'https://app.test/cancel'}), 'https://checkout.stripe.test/cs_1')
+		assert.equal(await billing.customerOfCharge('ch_1'), 'cus_1')
+		const [checkout, charge] = requests
+		assert.deepEqual([checkout.path, checkout.version, charge.path, charge.version],
+			['/v1/checkout/sessions', STRIPE_API_VERSION, '/v1/charges/ch_1', STRIPE_API_VERSION])
+		assert.match(checkout.body.get('integration_identifier'), /^opportunity_finder_plans_[a-z]{8}$/)
+		assert.equal(checkout.body.get('line_items[0][price]'), 'stripe_price_subscription_year_test')
+		assert.equal(checkout.body.has('payment_method_types[0]'), false)
+	} finally {
+		server.close()
+	}
 })

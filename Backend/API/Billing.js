@@ -6,7 +6,7 @@
 import express from 'express'
 import {APIError, audit, logLine, notFound, oneOf, withTransaction} from './Library.js'
 import {requireCompanyAdmin, requireMember} from './Companies.js'
-import {subscriptionIdOf} from '../Services/Billing.js'
+import {riskOf, subscriptionIdOf} from '../Services/Billing.js'
 import {FREE_PERIOD_NOTICE_DAYS, INTERVALS, LIVE_PLAN_STATUSES, PLAN_PRICES, PLANS} from '../Services/Plans.js'
 
 const DAY_MS = 864e5
@@ -62,6 +62,17 @@ export const storeSubscription = async (client, sub) => {
 	}
 }
 
+// Records a dispute, refund or early fraud warning against its company. A
+// dispute or fraud warning raises the failures alert: someone decides in
+// Stripe whether to refund or cancel, and any cancellation comes back
+// through the webhook. Logged without amounts, as other billing changes.
+export const storeRisk = async (client, risk, customerId) => {
+	const {rows: [row]} = await client.query('SELECT company_id FROM company_billing WHERE stripe_customer_id = $1', [customerId])
+	if (!row) return logLine({event: 'billing_unknown_customer', charge: risk.chargeId})
+	logLine({event: `billing_${risk.kind}`, company_id: row.company_id, id: risk.id, charge: risk.chargeId, reason: risk.reason})
+	await audit(client, {companyId: row.company_id, action: `billing.${risk.kind}`, detail: {id: risk.id, charge: risk.chargeId, reason: risk.reason}})
+}
+
 // Mounted before the JSON parser and the same-origin and session checks:
 // Stripe signs the raw body, and its signature is the only credential.
 export const stripeWebhook = ({pool, billing}) => {
@@ -79,9 +90,12 @@ export const stripeWebhook = ({pool, billing}) => {
 		// Read before the transaction, so no connection waits on Stripe. A
 		// failure here returns 500 and Stripe sends the event again.
 		const sub = subscriptionId ? await billing.subscription(subscriptionId) : null
+		const risk = riskOf(event)
+		const riskCustomer = risk ? risk.customerId ?? (risk.chargeId ? await billing.customerOfCharge(risk.chargeId) : null) : null
 		await withTransaction(pool, async (client) => {
 			const {rowCount} = await client.query('INSERT INTO stripe_event (id, type) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [event.id, event.type])
 			if (rowCount && sub) await storeSubscription(client, sub)
+			if (rowCount && risk) await storeRisk(client, risk, riskCustomer)
 		})
 		response.json({received: true})
 	})

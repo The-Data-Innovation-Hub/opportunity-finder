@@ -165,6 +165,49 @@ test('SEC-004 invoice and checkout events are read through to their subscription
 	assert.equal((await webhook(stripe.signed({id: `evt_${nextEvent++}`, type: 'customer.created', data: {object: {object: 'customer', id: 'cus_x'}}}))).status, 200)
 })
 
+test('SEC-004 a bank debit that settles after checkout starts the plan on the async event', async () => {
+	stripe.setSubscription({id: 'sub_a1', customerId: customerA, status: 'incomplete', interval: 'year'})
+	const completed = stripe.signed({id: `evt_${nextEvent++}`, type: 'checkout.session.completed',
+		data: {object: {object: 'checkout.session', mode: 'subscription', subscription: 'sub_a1', payment_status: 'unpaid'}}})
+	assert.equal((await webhook(completed)).status, 200)
+	assert.equal((await call('GET', `/companies/${companyA}/billing`, {cookie: alice})).json.billing.live, false)
+	stripe.setSubscription({id: 'sub_a1', customerId: customerA, status: 'active', interval: 'year'})
+	const settled = stripe.signed({id: `evt_${nextEvent++}`, type: 'checkout.session.async_payment_succeeded',
+		data: {object: {object: 'checkout.session', mode: 'subscription', subscription: 'sub_a1', payment_status: 'paid'}}})
+	assert.equal((await webhook(settled)).status, 200)
+	assert.deepEqual((await call('GET', `/companies/${companyA}/billing`, {cookie: alice})).json.billing, {plan: 'subscription', interval: 'year',
+		status: 'active', live: true, currentPeriodEnd: '2027-03-01T00:00:00.000Z', cancelAtPeriodEnd: false})
+})
+
+test('SEC-004 disputes, refunds and fraud warnings are recorded against the company, once, and disputes and warnings are logged for the alert', async () => {
+	stripe.setCharge('ch_a1', customerA)
+	const riskEvent = (type, object) => stripe.signed({id: `evt_${nextEvent++}`, type, data: {object}})
+	const dispute = riskEvent('charge.dispute.created', {object: 'dispute', id: 'dp_1', charge: 'ch_a1', reason: 'fraudulent', amount: 3600})
+	assert.equal((await webhook(dispute)).status, 200)
+	assert.equal((await webhook(dispute)).status, 200)
+	assert.equal((await webhook(riskEvent('radar.early_fraud_warning.created', {object: 'radar.early_fraud_warning', id: 'issfr_1', charge: 'ch_a1',
+		fraud_type: 'unauthorized_use_of_card'}))).status, 200)
+	// A refund carries its charge, and the charge its customer.
+	assert.equal((await webhook(riskEvent('charge.refunded', {object: 'charge', id: 'ch_a2', customer: customerA, refunded: true, amount: 3600}))).status, 200)
+	const {rows} = await db.pool.query(`SELECT action, detail FROM audit_event WHERE company_id = $1 AND action IN ('billing.dispute', 'billing.fraud_warning', 'billing.refund')
+		ORDER BY action`, [companyA])
+	assert.deepEqual(rows, [
+		{action: 'billing.dispute', detail: {id: 'dp_1', charge: 'ch_a1', reason: 'fraudulent'}},
+		{action: 'billing.fraud_warning', detail: {id: 'issfr_1', charge: 'ch_a1', reason: 'unauthorized_use_of_card'}},
+		{action: 'billing.refund', detail: {id: 'ch_a2', charge: 'ch_a2', reason: 'full'}},
+	])
+	assert.ok(logs.some((l) => l.includes('billing_dispute') && l.includes(companyA)))
+	assert.ok(logs.some((l) => l.includes('billing_fraud_warning') && l.includes(companyA)))
+	// Amounts stay out of the logs, as for other billing changes.
+	assert.ok(!logs.some((l) => l.includes('billing_') && l.includes('3600')))
+	// The plan itself is left for a person to decide in Stripe.
+	assert.equal((await call('GET', `/companies/${companyA}/billing`, {cookie: alice})).json.billing.status, 'active')
+	// A charge for a customer that is not ours is logged, not recorded.
+	stripe.setCharge('ch_stranger', 'cus_stranger')
+	assert.equal((await webhook(riskEvent('charge.dispute.created', {object: 'dispute', id: 'dp_2', charge: 'ch_stranger', reason: 'general'}))).status, 200)
+	assert.ok(logs.some((l) => l.includes('billing_unknown_customer') && l.includes('ch_stranger')))
+})
+
 test('SEC-004 an older subscription never replaces a live one; a second live one is logged for a refund', async () => {
 	stripe.setSubscription({id: 'sub_old', customerId: customerA, status: 'canceled', interval: 'month'})
 	assert.equal((await webhook(subscriptionEvent('sub_old', 'customer.subscription.deleted'))).status, 200)
