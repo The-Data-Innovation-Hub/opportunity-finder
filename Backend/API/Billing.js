@@ -7,7 +7,7 @@ import express from 'express'
 import {APIError, audit, logLine, notFound, oneOf, withTransaction} from './Library.js'
 import {requireCompanyAdmin, requireMember} from './Companies.js'
 import {riskOf, subscriptionIdOf} from '../Services/Billing.js'
-import {FREE_PERIOD_NOTICE_DAYS, INTERVALS, LIVE_PLAN_STATUSES, PLAN_PRICES, PLANS} from '../Services/Plans.js'
+import {CLUSTER, FREE_PERIOD_NOTICE_DAYS, INTERVALS, LIVE_PLAN_STATUSES, PLAN_PRICES, PLANS} from '../Services/Plans.js'
 
 const DAY_MS = 864e5
 // Stripe refuses a trial that ends less than 48 hours ahead.
@@ -26,13 +26,23 @@ const unavailable = () => new APIError(503, 'billing_unavailable', 'Plans cannot
 
 // When plans are needed: from the day after the free period. With no free
 // period set, every company runs on its own key and no plan is needed.
-const termsOf = async (pool) => {
-	const {rows: [s]} = await pool.query('SELECT free_period_until FROM service_setting WHERE id = 1')
+// DEC-015: a Connected Health Cluster company has no free period. Its first
+// report is free; plans are needed from the day it was added, and checkout
+// is open at once and charges straight away.
+const termsOf = async (pool, companyId) => {
+	const {rows: [s]} = await pool.query(`SELECT s.free_period_until, c.cohort, c.created_at::date::text AS added_on,
+			EXISTS (SELECT 1 FROM report r WHERE r.company_id = c.id) AS has_report
+		FROM service_setting s JOIN company c ON c.id = $1 WHERE s.id = 1`, [companyId])
+	if (s.cohort == CLUSTER) {
+		return {cohort: s.cohort, freePeriodUntil: null, checkoutOpensOn: null, plansRequiredFrom: s.added_on, firstReportFree: !s.has_report}
+	}
 	const until = s.free_period_until
 	return {
+		cohort: s.cohort,
 		freePeriodUntil: until,
 		checkoutOpensOn: until ? addDays(until, -FREE_PERIOD_NOTICE_DAYS) : null,
 		plansRequiredFrom: until ? addDays(until, 1) : null,
+		firstReportFree: false,
 	}
 }
 
@@ -107,7 +117,7 @@ export const billingRoutes = ({pool, billing, appUrl, now = () => new Date()}) =
 	const member = requireMember(pool)
 	const view = async (companyId) => {
 		const row = await billingRow(pool, companyId)
-		return {billing: planView(row), hasAccount: Boolean(row), available: Boolean(billing), prices: PLAN_PRICES, ...(await termsOf(pool))}
+		return {billing: planView(row), hasAccount: Boolean(row), available: Boolean(billing), prices: PLAN_PRICES, ...(await termsOf(pool, companyId))}
 	}
 
 	router.get('/companies/:companyId/billing', member, async (request, response) => {
@@ -118,7 +128,7 @@ export const billingRoutes = ({pool, billing, appUrl, now = () => new Date()}) =
 		if (!billing) throw unavailable()
 		const plan = oneOf(request.body?.plan, 'plan', PLANS)
 		const interval = oneOf(request.body?.interval, 'interval', INTERVALS)
-		const terms = await termsOf(pool)
+		const terms = await termsOf(pool, request.companyId)
 		const at = now()
 		if (terms.checkoutOpensOn && at.toISOString().slice(0, 10) < terms.checkoutOpensOn) {
 			throw new APIError(409, 'checkout_not_open', `Plans can be chosen from ${terms.checkoutOpensOn}`)
@@ -135,6 +145,7 @@ export const billingRoutes = ({pool, billing, appUrl, now = () => new Date()}) =
 			return id
 		})
 		// Bought before the free period ends: nothing is charged until it does.
+		// A Connected Health Cluster plan is charged at once (no trial).
 		const trialEnd = terms.plansRequiredFrom ? londonMidnight(terms.plansRequiredFrom) : null
 		const settings = `${appUrl}/companies/${companyId}/settings`
 		const url = await billing.checkoutUrl({customerId, companyId, plan, interval,

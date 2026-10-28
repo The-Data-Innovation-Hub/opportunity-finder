@@ -29,12 +29,16 @@ export const api = {
 }
 
 export type Role = 'company_admin' | 'company_member'
+// DEC-015: AI in Healthcare programme members have the free period; Connected
+// Health Cluster members get their first report free, then need a plan.
+export type Cohort = 'ai_in_healthcare' | 'connected_health_cluster'
+export const COHORT_LABELS: Record<Cohort, string> = {ai_in_healthcare: 'AI in Healthcare programme', connected_health_cluster: 'Connected Health Cluster'}
 export type Me = {
 	user: {id: string, email: string, displayName: string | null}
 	isProgrammeAdmin: boolean
 	// hasPlan: a live plan not set to end, so it carries on after the free period (DEC-014).
-	companies: {id: string, name: string, status: string, role: Role, hasPlan: boolean}[]
-	// DEC-011: set while the programme covers every company's AI cost.
+	companies: {id: string, name: string, status: string, role: Role, cohort: Cohort, hasPlan: boolean}[]
+	// DEC-011: set while the programme covers AI in Healthcare companies' AI cost.
 	freePeriod: {until: string, keyWorking: boolean} | null
 }
 
@@ -95,11 +99,11 @@ export type ProgrammeKey = {
 	subscribers: number
 }
 export type ServiceSettings = {searchEnabled: boolean, bravePricePer1000Usd: number, monthlyQueryCap: number, reviewDate: string, updatedAt: string}
-export type AdminCompany = {id: string, name: string, status: 'active' | 'paused', created_at: string, members: number, has_profile: boolean,
+export type AdminCompany = {id: string, name: string, status: 'active' | 'paused', cohort: Cohort, created_at: string, members: number, has_profile: boolean,
 	key_status: string | null, provider: string | null, model: string | null, last_run_week: string | null, last_run_status: string | null, last_run_skip_reason: string | null,
 	billing_plan: Plan | null, billing_status: string | null}
 // A company as just created, before it has members or runs.
-export type NewCompany = Pick<AdminCompany, 'id' | 'name' | 'status' | 'created_at'>
+export type NewCompany = Pick<AdminCompany, 'id' | 'name' | 'status' | 'cohort' | 'created_at'>
 export type AdminRun = {company_id: string, company: string, status: string, skip_reason: string | null, error_code: string | null, provider: string | null,
 	model: string | null, started_at: string | null, finished_at: string | null, input_tokens: string, output_tokens: string, cache_read_tokens: string, cache_write_tokens: string,
 	model_cost_usd: string, paid_by: 'company' | 'programme', search_queries: number, search_cost_usd: string, page_reads: number,
@@ -118,10 +122,13 @@ export type Billing = {
 	available: boolean
 	// Pence, excluding VAT.
 	prices: Record<Plan, Record<BillingInterval, number>>
+	cohort: Cohort
 	freePeriodUntil: string | null
 	checkoutOpensOn: string | null
 	// Null when no free period is set: every company uses its own key.
 	plansRequiredFrom: string | null
+	// DEC-015: a Connected Health Cluster company that has not had its free first report yet.
+	firstReportFree: boolean
 }
 
 export type ProgrammeSkip = {week: string, reason: 'programme_key_problem' | 'programme_budget_reached'} | null

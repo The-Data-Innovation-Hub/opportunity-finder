@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {Navigate} from '@tanstack/react-router'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {api, daysUntil, formatDate, money, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses} from '../api'
+import {api, COHORT_LABELS, daysUntil, formatDate, money, type Cohort, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, Notice, Select} from '../components/ui'
 import {CostCard} from '../components/CostCard'
@@ -43,10 +43,13 @@ const Companies = () => {
 	const queryClient = useQueryClient()
 	const companies = useQuery({queryKey: ['admin', 'companies'], queryFn: () => api.get<Responses['GET /admin/companies']>('/admin/companies')})
 	const [name, setName] = useState('')
+	const [cohort, setCohort] = useState<Cohort>('ai_in_healthcare')
 	const [inviting, setInviting] = useState<NewCompany | null>(null)
 	const refresh = () => queryClient.invalidateQueries({queryKey: ['admin', 'companies']})
-	const create = useMutation({mutationFn: () => api.post<Responses['POST /admin/companies']>('/admin/companies', {name}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
+	const create = useMutation({mutationFn: () => api.post<Responses['POST /admin/companies']>('/admin/companies', {name, cohort}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
 	const setStatus = useMutation({mutationFn: ({id, status}: {id: string, status: string}) => api.patch(`/admin/companies/${id}`, {status}), onSuccess: refresh})
+	// DEC-015: moving a company between groups changes who pays for its runs.
+	const changeCohort = useMutation({mutationFn: ({id, cohort: to}: {id: string, cohort: Cohort}) => api.patch(`/admin/companies/${id}`, {cohort: to}), onSuccess: refresh})
 	const [renaming, setRenaming] = useState<{id: string, name: string} | null>(null)
 	const rename = useMutation({mutationFn: ({id, name: newName}: {id: string, name: string}) => api.patch(`/admin/companies/${id}`, {name: newName}), onSuccess: () => { setRenaming(null); refresh() }})
 
@@ -59,7 +62,7 @@ const Companies = () => {
 				<div className="overflow-x-auto">
 					<table className="w-full text-left text-sm">
 						<thead className="border-b border-line text-xs uppercase text-muted">
-							<tr><th scope="col" className="py-2 pr-3">Company</th><th scope="col" className="pr-3">People</th><th scope="col" className="pr-3">Set-up</th><th scope="col" className="pr-3">Plan</th><th scope="col" className="pr-3">Last run</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
+							<tr><th scope="col" className="py-2 pr-3">Company</th><th scope="col" className="pr-3">Group</th><th scope="col" className="pr-3">People</th><th scope="col" className="pr-3">Set-up</th><th scope="col" className="pr-3">Plan</th><th scope="col" className="pr-3">Last run</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
 						</thead>
 						<tbody className="divide-y divide-line">
 							{companies.data.companies.map((c) => (
@@ -74,6 +77,12 @@ const Companies = () => {
 												<button type="button" className="text-xs font-medium text-muted hover:underline" onClick={() => setRenaming(null)}>Cancel</button>
 											</form>
 										) : <>{c.name} {c.status == 'paused' && <Badge tone="warn">Paused</Badge>}</>}
+									</td>
+									<td className="pr-3">
+										<Select aria-label={`Group for ${c.name}`} value={c.cohort} disabled={changeCohort.isPending}
+											onChange={(e) => { const to = e.target.value as Cohort; if (confirm(`Move ${c.name} to the ${COHORT_LABELS[to]}? ${to == 'ai_in_healthcare' ? 'It gets the free period.' : 'It needs a plan after its first report.'}`)) changeCohort.mutate({id: c.id, cohort: to}) }}>
+											{(Object.keys(COHORT_LABELS) as Cohort[]).map((k) => <option key={k} value={k}>{COHORT_LABELS[k]}</option>)}
+										</Select>
 									</td>
 									<td className="pr-3">{c.members}</td>
 									<td className="pr-3 space-x-1">
@@ -99,8 +108,16 @@ const Companies = () => {
 			)}
 			{setStatus.error && <ErrorBox error={setStatus.error} />}
 			{rename.error && <ErrorBox error={rename.error} />}
+			{changeCohort.error && <ErrorBox error={changeCohort.error} />}
 			<form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); create.mutate() }}>
 				<div className="min-w-60 flex-1"><Field label="Add a company">{(id) => <Input id={id} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />}</Field></div>
+				<Field label="Group" hint={cohort == 'ai_in_healthcare' ? 'Free period on the programme key' : 'First report free, then a paid plan'}>
+					{(id, d) => (
+						<Select id={id} aria-describedby={d} value={cohort} onChange={(e) => setCohort(e.target.value as Cohort)}>
+							{(Object.keys(COHORT_LABELS) as Cohort[]).map((k) => <option key={k} value={k}>{COHORT_LABELS[k]}</option>)}
+						</Select>
+					)}
+				</Field>
 				<Button type="submit" busy={create.isPending} disabled={!name.trim()}>Add company</Button>
 			</form>
 			{create.error && <div className="mt-2"><ErrorBox error={create.error} /></div>}
@@ -234,7 +251,7 @@ const FreePeriod = () => {
 	})
 	const removeKey = useMutation({mutationFn: () => api.delete<Responses['DELETE /admin/programme-key/credential']>('/admin/programme-key/credential'), onSuccess: refresh})
 
-	const title = 'Free period (programme pays the AI model)'
+	const title = 'Free period for the AI in Healthcare programme (programme pays the AI model)'
 	if (programme.error || models.error) return <Card title={title}><ErrorBox error={programme.error ?? models.error} onRetry={() => { if (programme.error) programme.refetch(); if (models.error) models.refetch() }} /></Card>
 	if (programme.isPending || models.isPending || !form) return <Card title={title}><Loading /></Card>
 	const p = programme.data

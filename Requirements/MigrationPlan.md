@@ -93,6 +93,17 @@
 - Rollback: the old image ignores the tables; `DROP TABLE stripe_event, company_billing` only if no live subscription exists, since the table is the only link from a company to its Stripe customer.
 - Execution: applied to disposable `of_test_*` databases by `npm run test:db` (clean install with every migration), 27 Oct 2026. Not yet run on `opportunity_finder_dev` or Azure.
 
+## 0007_CompanyCohort.sql (DEC-015)
+
+| Operation | Compatibility | Lock/rewrite risk | Data-loss risk | Validation |
+|---|---|---|---|---|
+| `ALTER TABLE company ADD COLUMN cohort TEXT NOT NULL DEFAULT 'ai_in_healthcare'` with check `ck_company_cohort` (`ai_in_healthcare`, `connected_health_cluster`) | Additive; the old image ignores the column, and every existing company becomes an AI in Healthcare member, as today | Constant default: no table rewrite (PostgreSQL 11+); the check scans `company` (a few rows) under a brief exclusive lock | None | DEC-015 DB tests; clean install in `npm run test:db` |
+| Grant `of_api` UPDATE (`cohort`) on `company` (skipped where the role does not exist, as 0005) | Additive | Catalog change only | None | Tests run as the runtime roles |
+
+- Order: migration, then image. The new image reads `company.cohort` in `/me`, the admin list, billing and the weekly run; the old one never does.
+- Rollback: the old image ignores the column. `ALTER TABLE company DROP COLUMN cohort` loses which companies are in the cluster, so note them first.
+- Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 28 Oct 2026. Not yet run on Azure.
+
 ## Verification evidence
 
 - Clean install result: passed on a disposable local PostgreSQL 16.15 database, 23 Oct 2026 (`npm run test:db`, 7 pass).

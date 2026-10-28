@@ -19,7 +19,7 @@ GRANT USAGE ON SCHEMA public TO of_api, of_worker;
 -- FOR UPDATE lock taken before a profile save.
 GRANT SELECT, INSERT ON app_user, company, company_membership, sign_in_token, user_session, company_profile TO of_api;
 GRANT UPDATE (email) ON app_user TO of_api;
-GRANT UPDATE (status, name) ON company TO of_api;
+GRANT UPDATE (status, name, cohort) ON company TO of_api;
 GRANT UPDATE (company_id), DELETE ON company_membership TO of_api;
 GRANT UPDATE (used_at) ON sign_in_token TO of_api;
 GRANT UPDATE (revoked_at) ON user_session TO of_api;

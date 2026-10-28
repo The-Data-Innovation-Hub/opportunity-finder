@@ -84,7 +84,7 @@ test('BEH-016 the billing card shows the prices and when plans open and are need
 	assert.equal(r.status, 200)
 	assert.deepEqual(r.json, {billing: null, hasAccount: false, available: true,
 		prices: {subscription: {month: 3000, year: 30000}, own_key: {month: 1000, year: 10000}},
-		freePeriodUntil: '2027-01-31', checkoutOpensOn: '2027-01-03', plansRequiredFrom: '2027-02-01'})
+		cohort: 'ai_in_healthcare', freePeriodUntil: '2027-01-31', checkoutOpensOn: '2027-01-03', plansRequiredFrom: '2027-02-01', firstReportFree: false})
 })
 
 test('BEH-016 checkout opens with the free-period notice, not before', async () => {
@@ -253,4 +253,49 @@ test('BEH-016 without Stripe settings, the card says plans are unavailable and c
 	const r = await call('POST', `/companies/${companyB}/billing/checkout`, {cookie: bob, at: offBase, body: {plan: 'own_key', interval: 'month'}})
 	assert.deepEqual([r.status, r.json.error.code], [503, 'billing_unavailable'])
 	assert.equal((await webhook(subscriptionEvent('sub_a1'), offBase)).status, 404)
+})
+
+// --- DEC-015: Connected Health Cluster companies ------------------------------------
+
+test('DEC-015 a programme admin adds a Cluster company and can move companies between groups, audited', async () => {
+	const bad = await call('POST', '/admin/companies', {cookie: admin, body: {name: 'Bad Group Co', cohort: 'other'}})
+	assert.equal(bad.status, 400)
+	const created = await call('POST', '/admin/companies', {cookie: admin, body: {name: 'Cluster Co', cohort: 'connected_health_cluster'}})
+	assert.equal(created.status, 201)
+	assert.equal(created.json.company.cohort, 'connected_health_cluster')
+	const list = (await call('GET', '/admin/companies', {cookie: admin})).json.companies
+	assert.deepEqual(list.map((c) => [c.name, c.cohort]), [['Care Routing Ltd', 'ai_in_healthcare'], ['Cluster Co', 'connected_health_cluster'], ['Other Co', 'ai_in_healthcare']])
+
+	const moved = await call('PATCH', `/admin/companies/${companyB}`, {cookie: admin, body: {cohort: 'connected_health_cluster'}})
+	assert.equal(moved.json.company.cohort, 'connected_health_cluster')
+	assert.equal((await call('PATCH', `/admin/companies/${companyB}`, {cookie: alice, body: {cohort: 'ai_in_healthcare'}})).status, 403)
+	await call('PATCH', `/admin/companies/${companyB}`, {cookie: admin, body: {cohort: 'ai_in_healthcare'}})
+	const {rows} = await db.pool.query("SELECT detail FROM audit_event WHERE company_id = $1 AND action = 'company.cohort_changed' ORDER BY created_at", [companyB])
+	assert.deepEqual(rows.map((r) => r.detail.to), ['connected_health_cluster', 'ai_in_healthcare'])
+})
+
+test('DEC-015 a Cluster company can buy a plan before the free-period notice, is charged at once, and sees its group', async () => {
+	clock = new Date('2026-12-01T10:00:00Z')
+	const cluster = (await db.pool.query("SELECT id FROM company WHERE name = 'Cluster Co'")).rows[0].id
+	assert.equal((await call('POST', `/admin/companies/${cluster}/invitations`, {cookie: admin, body: {email: 'dave@cluster.example', role: 'company_admin'}})).status, 201)
+	const dave = await signIn('dave@cluster.example')
+	const me = (await call('GET', '/me', {cookie: dave})).json
+	assert.deepEqual(me.companies.map((c) => [c.name, c.cohort, c.hasPlan]), [['Cluster Co', 'connected_health_cluster', false]])
+
+	const card = (await call('GET', `/companies/${cluster}/billing`, {cookie: dave})).json
+	assert.equal(card.cohort, 'connected_health_cluster')
+	assert.deepEqual([card.freePeriodUntil, card.checkoutOpensOn, card.firstReportFree], [null, null, true])
+	assert.match(card.plansRequiredFrom, /^\d{4}-\d{2}-\d{2}$/)
+
+	const r = await call('POST', `/companies/${cluster}/billing/checkout`, {cookie: dave, body: {plan: 'subscription', interval: 'month'}})
+	assert.equal(r.status, 200)
+	const checkout = stripe.calls.at(-1)
+	assert.deepEqual([checkout.call, checkout.companyId, checkout.trialEnd], ['checkout', cluster, null])
+
+	// After its first report, the card no longer offers a free one.
+	await db.pool.query("INSERT INTO weekly_gather (week_start) VALUES ('2026-11-30') ON CONFLICT DO NOTHING")
+	const {rows: [run]} = await db.pool.query("INSERT INTO search_run (company_id, week_start, status) VALUES ($1, '2026-11-30', 'succeeded') RETURNING id", [cluster])
+	await db.pool.query(`INSERT INTO report (company_id, search_run_id, week_start, blob_name, funding_rows, tender_rows, new_this_week, top_five, also_checked, sources, note)
+		VALUES ($1, $2, '2026-11-30', 'r.xlsx', 1, 0, 1, '[]', '[]', '[]', '')`, [cluster, run.id])
+	assert.equal((await call('GET', `/companies/${cluster}/billing`, {cookie: dave})).json.firstReportFree, false)
 })

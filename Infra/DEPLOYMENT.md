@@ -283,7 +283,7 @@ Billing changes are logged without amounts or card details. The failures alert a
 
 Refunds are recorded in the company's audit log (`billing.refund`) without an alert.
 
-**Release with migration 0006.** The new code needs migration 0006, so migrate before switching the API and the other jobs:
+**Release with migrations 0006 and 0007.** The new code needs both (0007 adds `company.cohort`, DEC-015), so migrate before switching the API and the other jobs:
 1. Run `az containerapp job update --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 -g rg-opportunity-finder -n job-oppfinder-migrate --image <new image>`.
 2. Start the migration job.
 3. Once it has succeeded, update the API and the other jobs.

@@ -4,7 +4,7 @@
 import express from 'express'
 import {audit, email, forbidden, invalid, isoDate, notFound, oneOf, text, uuidParam, weekStart, withTransaction} from './Library.js'
 import {acceptKey, inviteToCompany, sendInvitation} from './Companies.js'
-import {LIVE_PLAN_STATUSES} from '../Services/Plans.js'
+import {COHORTS, LIVE_PLAN_STATUSES} from '../Services/Plans.js'
 
 const requireProgrammeAdmin = (request, response, next) => {
 	if (!request.user.is_programme_admin) throw forbidden()
@@ -24,7 +24,7 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 	router.use('/admin', requireProgrammeAdmin)
 
 	router.get('/admin/companies', async (request, response) => {
-		const {rows} = await pool.query(`SELECT c.id, c.name, c.status, c.created_at,
+		const {rows} = await pool.query(`SELECT c.id, c.name, c.status, c.cohort, c.created_at,
 				(SELECT count(*)::int FROM company_membership m WHERE m.company_id = c.id) AS members,
 				EXISTS (SELECT 1 FROM company_profile p WHERE p.company_id = c.id) AS has_profile,
 				k.status AS key_status, k.provider, k.model,
@@ -40,9 +40,12 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 
 	router.post('/admin/companies', async (request, response) => {
 		const name = text(request.body?.name, 'name', {max: 200})
+		// DEC-015: AI in Healthcare programme unless the admin picks the cluster.
+		const cohort = request.body?.cohort == null ? COHORTS[0] : oneOf(request.body.cohort, 'cohort', COHORTS)
 		const company = await withTransaction(pool, async (client) => {
-			const {rows} = await client.query('INSERT INTO company (name, created_by) VALUES ($1, $2) RETURNING id, name, status, created_at', [name, request.user.id])
-			await audit(client, {companyId: rows[0].id, actorUserId: request.user.id, action: 'company.created'})
+			const {rows} = await client.query('INSERT INTO company (name, cohort, created_by) VALUES ($1, $2, $3) RETURNING id, name, status, cohort, created_at',
+				[name, cohort, request.user.id])
+			await audit(client, {companyId: rows[0].id, actorUserId: request.user.id, action: 'company.created', detail: {cohort}})
 			return rows[0]
 		})
 		response.status(201).json({company})
@@ -52,14 +55,16 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 		const id = uuidParam(request.params.id)
 		const status = request.body?.status == null ? null : oneOf(request.body.status, 'status', ['active', 'paused'])
 		const name = request.body?.name == null ? null : text(request.body.name, 'name', {max: 200})
-		if (status == null && name == null) throw invalid('Send a status or a name')
+		const cohort = request.body?.cohort == null ? null : oneOf(request.body.cohort, 'cohort', COHORTS)
+		if (status == null && name == null && cohort == null) throw invalid('Send a status, a name or a group')
 		const company = await withTransaction(pool, async (client) => {
-			const {rows: [before]} = await client.query('SELECT name, status FROM company WHERE id = $1 FOR UPDATE', [id])
+			const {rows: [before]} = await client.query('SELECT name, status, cohort FROM company WHERE id = $1 FOR UPDATE', [id])
 			if (!before) throw notFound()
-			const {rows} = await client.query('UPDATE company SET status = coalesce($2, status), name = coalesce($3, name) WHERE id = $1 RETURNING id, name, status',
-				[id, status, name])
+			const {rows} = await client.query(`UPDATE company SET status = coalesce($2, status), name = coalesce($3, name), cohort = coalesce($4, cohort)
+				WHERE id = $1 RETURNING id, name, status, cohort`, [id, status, name, cohort])
 			if (status != null && status != before.status) await audit(client, {companyId: id, actorUserId: request.user.id, action: 'company.status_changed', detail: {status}})
 			if (name != null && name != before.name) await audit(client, {companyId: id, actorUserId: request.user.id, action: 'company.renamed', detail: {from: before.name, to: name}})
+			if (cohort != null && cohort != before.cohort) await audit(client, {companyId: id, actorUserId: request.user.id, action: 'company.cohort_changed', detail: {from: before.cohort, to: cohort}})
 			return rows[0]
 		})
 		response.json({company})
