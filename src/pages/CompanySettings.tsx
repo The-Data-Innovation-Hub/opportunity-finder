@@ -197,9 +197,11 @@ const PlanSettings = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean
 					<dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
 						<dt className="text-muted">Plan</dt><dd>{PLAN_LABELS[p.plan].name}</dd>
 						<dt className="text-muted">Price</dt><dd>{priceText(b.prices, p.plan, p.interval)} + VAT</dd>
-						{p.status == 'trialing'
-							? <><dt className="text-muted">First payment</dt><dd>{formatDate(b.plansRequiredFrom)}</dd></>
-							: <><dt className="text-muted">{p.cancelAtPeriodEnd ? 'Ends' : 'Renews'}</dt><dd>{formatDate(p.currentPeriodEnd)}</dd></>}
+						{p.cancelAtPeriodEnd
+							? <><dt className="text-muted">Ends</dt><dd>{formatDate(p.currentPeriodEnd)}</dd></>
+							: p.status == 'trialing'
+								? <><dt className="text-muted">First payment</dt><dd>{formatDate(b.plansRequiredFrom)}</dd></>
+								: <><dt className="text-muted">Renews</dt><dd>{formatDate(p.currentPeriodEnd)}</dd></>}
 					</dl>
 					<p className="mt-3 text-sm text-muted">{PLAN_LABELS[p.plan].what}</p>
 					{p.status == 'past_due' && <div className="mt-3"><Notice tone="warn">Your last card payment failed. Stripe will try again; please update your card so your weekly reports continue.</Notice></div>}

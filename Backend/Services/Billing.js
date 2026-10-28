@@ -24,15 +24,19 @@ const isoFromSeconds = (s) => (s ? new Date(s * 1000).toISOString() : null)
 export const toSubscription = (s, planOfPrice) => {
 	const item = s.items?.data?.[0]
 	const {plan = null, interval = null} = planOfPrice(item?.price?.id) ?? {}
+	// Since API version 2025-03-31 the period is on the item.
+	const periodEnd = isoFromSeconds(item?.current_period_end ?? s.current_period_end)
+	// The customer portal now cancels by setting cancel_at (the period end)
+	// and leaves cancel_at_period_end false; either means the plan is ending.
+	const cancelAt = isoFromSeconds(s.cancel_at)
 	return {
 		id: s.id,
 		customerId: typeof s.customer == 'string' ? s.customer : s.customer?.id,
 		status: s.status,
 		plan,
 		interval,
-		// Since API version 2025-03-31 the period is on the item.
-		currentPeriodEnd: isoFromSeconds(item?.current_period_end ?? s.current_period_end),
-		cancelAtPeriodEnd: Boolean(s.cancel_at_period_end),
+		currentPeriodEnd: cancelAt && (!periodEnd || cancelAt < periodEnd) ? cancelAt : periodEnd,
+		cancelAtPeriodEnd: Boolean(s.cancel_at_period_end || cancelAt),
 	}
 }
 
