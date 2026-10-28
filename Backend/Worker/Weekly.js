@@ -11,7 +11,7 @@ import {LIMITS} from './Research/tools.js'
 import {scopeRegions} from './Research/search.js'
 import {buildWorkbook} from './Report/workbook.js'
 import {providerFor} from './Providers/index.js'
-import {FREE_PERIOD_NOTICE_DAYS, LIVE_PLAN_STATUSES} from '../Services/Plans.js'
+import {FREE_PERIOD_NOTICE_DAYS, LIVE_PLAN_STATUSES, hasPlanSql} from '../Services/Plans.js'
 
 export const COMPANY_CONCURRENCY = 5
 export const targetWeek = (now = new Date()) => weekStart(new Date(now.getTime() + 864e5))
@@ -466,7 +466,8 @@ export const runFirstReports = async ({pool, secrets, blobs, fetchers, mailer, a
 
 // One notification per report per member, inserted first so a retried job
 // never emails anyone twice; then every pending one is sent.
-// DEC-011: from four weeks before the free period ends, the email says so.
+// DEC-011: from four weeks before the free period ends, the email says so,
+// unless the company already has a plan for after it (DEC-014).
 export {FREE_PERIOD_NOTICE_DAYS}
 
 // companyIds: only these companies' reports (a first report); otherwise all.
@@ -479,8 +480,9 @@ export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, co
 		JOIN app_user u ON u.id = m.user_id AND u.disabled_at IS NULL
 		WHERE r.week_start = $1 AND ($2::uuid[] IS NULL OR r.company_id = ANY($2)) ON CONFLICT (report_id, user_id) DO NOTHING`, [week, companyIds])
 	const {rows} = await pool.query(`SELECT n.id, n.attempts, u.email, c.name AS company_name, c.id AS company_id, r.id AS report_id,
-			r.funding_rows, r.tender_rows, r.new_this_week, r.top_five
+			r.funding_rows, r.tender_rows, r.new_this_week, r.top_five, ${hasPlanSql('b')} AS has_plan
 		FROM notification n JOIN report r ON r.id = n.report_id JOIN company c ON c.id = n.company_id JOIN app_user u ON u.id = n.user_id
+		LEFT JOIN company_billing b ON b.company_id = c.id
 		WHERE r.week_start = $1 AND ($2::uuid[] IS NULL OR r.company_id = ANY($2)) AND n.status IN ('pending', 'failed') AND n.attempts < 3`, [week, companyIds])
 	let sent = 0
 	for (const n of rows) {
@@ -492,7 +494,7 @@ export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, co
 		try {
 			await mailer.send({to: n.email, ...emailFor({companyName: n.company_name, link: `${appUrl}/companies/${n.company_id}/reports/${n.report_id}`,
 				fundingRows: n.funding_rows, tenderRows: n.tender_rows, newThisWeek: n.new_this_week, topFive: n.top_five,
-				freePeriodEnds, settingsLink: `${appUrl}/companies/${n.company_id}/settings`})})
+				freePeriodEnds: n.has_plan ? null : freePeriodEnds, settingsLink: `${appUrl}/companies/${n.company_id}/settings`})})
 			await pool.query(`UPDATE notification SET status = 'sent', sent_at = now() WHERE id = $1`, [n.id])
 			sent += 1
 		} catch (error) {

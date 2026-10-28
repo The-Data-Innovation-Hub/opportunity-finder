@@ -37,6 +37,6 @@ export const COMPANY_ID = 'c1'
 export const meAs = (role: Role, {isProgrammeAdmin = false} = {}): Me => ({
 	user: {id: 'u1', email: 'founder@example.test', displayName: null},
 	isProgrammeAdmin,
-	companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', role}],
+	companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', role, hasPlan: false}],
 	freePeriod: null,
 })

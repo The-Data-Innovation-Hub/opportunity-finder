@@ -170,7 +170,11 @@ const PlanSettings = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean
 	// Back from Stripe: read the plan now rather than wait for Stripe's webhook.
 	const sync = useMutation({
 		mutationFn: () => api.post<Responses['POST /companies/:companyId/billing/sync']>(`/companies/${companyId}/billing/sync`),
-		onSuccess: (data) => queryClient.setQueryData(['billing', companyId], data),
+		onSuccess: (data) => {
+			queryClient.setQueryData(['billing', companyId], data)
+			// The free-period notice depends on the plan.
+			queryClient.invalidateQueries({queryKey: ['me']})
+		},
 	})
 	const back = new URLSearchParams(window.location.search).get('billing')
 	useEffect(() => {

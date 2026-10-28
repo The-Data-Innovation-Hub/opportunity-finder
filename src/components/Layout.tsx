@@ -23,6 +23,8 @@ export const Layout = () => {
 		queryClient.clear()
 		navigate({to: '/sign-in'})
 	}
+	// DEC-014: companies with a plan for after the free period need no notice.
+	const needPlan = me.data.companies.filter((c) => !c.hasPlan)
 
 	return (
 		<Shell
@@ -37,9 +39,9 @@ export const Layout = () => {
 				</nav>
 			}
 		>
-			{me.data.freePeriod && me.data.companies.length > 0 && daysUntil(me.data.freePeriod.until) <= FREE_PERIOD_NOTICE_DAYS && (
+			{me.data.freePeriod && needPlan.length > 0 && daysUntil(me.data.freePeriod.until) <= FREE_PERIOD_NOTICE_DAYS && (
 				<div className="mb-6"><Notice tone="warn">
-					The programme covers the AI cost of your weekly reports until {formatDate(me.data.freePeriod.until)}. To keep them after that, a company admin chooses a plan under Settings: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT). Choosing now costs nothing until then.
+					The programme covers the AI cost of your weekly reports until {formatDate(me.data.freePeriod.until)}. To keep them after that, a company admin chooses a plan under Settings{me.data.companies.length > 1 && <> for {needPlan.map((c) => c.name).join(' and ')}</>}: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT). Choosing now costs nothing until then.
 				</Notice></div>
 			)}
 			<Outlet />
