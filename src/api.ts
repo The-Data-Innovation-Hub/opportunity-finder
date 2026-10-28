@@ -32,7 +32,8 @@ export type Role = 'company_admin' | 'company_member'
 export type Me = {
 	user: {id: string, email: string, displayName: string | null}
 	isProgrammeAdmin: boolean
-	companies: {id: string, name: string, status: string, role: Role}[]
+	// hasPlan: a live plan not set to end, so it carries on after the free period (DEC-014).
+	companies: {id: string, name: string, status: string, role: Role, hasPlan: boolean}[]
 	// DEC-011: set while the programme covers every company's AI cost.
 	freePeriod: {until: string, keyWorking: boolean} | null
 }

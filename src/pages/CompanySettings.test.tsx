@@ -134,3 +134,27 @@ test('BEH-017 after the free period a company without a plan is told its runs ar
 	expect(await screen.findByText('No plan: weekly runs are paused')).toBeInTheDocument()
 	expect(screen.getByText(/Your weekly reports are paused until a company admin chooses a plan/)).toBeInTheDocument()
 })
+
+// A /me with a free period ending soon and these companies.
+const meWith = (companies: {hasPlan: boolean, name?: string, id?: string}[]) => ({...meAs('company_admin'), freePeriod: {until: '2027-01-31', keyWorking: true},
+	companies: companies.map((c, i) => ({id: c.id ?? COMPANY_ID, name: c.name ?? 'Care Routing Ltd', status: 'active', role: i ? 'company_member' as const : 'company_admin' as const, hasPlan: c.hasPlan}))})
+
+test('DEC-014 the free-period notice shows only for companies still without a plan for after it', async () => {
+	on('2027-01-10')
+	const notice = /a company admin chooses a plan under Settings/
+	mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: false}])}}))
+	const first = renderApp(`${base}/settings`)
+	expect(await screen.findByText(notice)).toBeInTheDocument()
+	first.unmount()
+
+	mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: true}])}}))
+	const second = renderApp(`${base}/settings`)
+	expect(await screen.findByLabelText('What does your product do, and for whom?')).toBeInTheDocument()
+	expect(screen.queryByText(notice)).toBeNull()
+	second.unmount()
+
+	// Someone in two companies is told which one still needs a plan.
+	mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: true}, {hasPlan: false, name: 'Second Co', id: 'c2'}])}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText(/chooses a plan under Settings for Second Co:/)).toBeInTheDocument()
+})

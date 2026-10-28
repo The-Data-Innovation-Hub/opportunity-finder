@@ -326,6 +326,14 @@ test('DEC-011 companies see only the free period end date; the cost card counts 
 	const me = await call('GET', '/me', {cookie: alice})
 	// The end date and whether the programme key works; never an amount.
 	assert.deepEqual(me.json.freePeriod, {until: '2027-01-31', keyWorking: false})
+	// DEC-014: whether each company has a plan for after it, for the notice.
+	assert.deepEqual(me.json.companies.map((c) => c.hasPlan), me.json.companies.map(() => false))
+	await db.pool.query(`INSERT INTO company_billing (company_id, stripe_customer_id, stripe_subscription_id, plan, billing_interval, status)
+		VALUES ($1, 'cus_me', 'sub_me', 'own_key', 'month', 'active')`, [companyA])
+	assert.equal((await call('GET', '/me', {cookie: alice})).json.companies.find((c) => c.id == companyA).hasPlan, true)
+	await db.pool.query("UPDATE company_billing SET status = 'canceled' WHERE company_id = $1", [companyA])
+	assert.equal((await call('GET', '/me', {cookie: alice})).json.companies.find((c) => c.id == companyA).hasPlan, false)
+	await db.pool.query('DELETE FROM company_billing WHERE company_id = $1', [companyA])
 	const cred = await call('GET', `/companies/${companyA}/llm-credential`, {cookie: alice})
 	assert.equal(cred.json.programmeSkip, null)
 	await db.pool.query("INSERT INTO weekly_gather (week_start) VALUES ('2027-01-04') ON CONFLICT DO NOTHING")

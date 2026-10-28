@@ -345,6 +345,19 @@ test('DEC-011 the Monday email announces the end of the free period from four we
 	const notice = mailer.outbox.filter((m) => m.to == 'founder@l.example').at(-1)
 	assert.match(notice.text, /covering the AI cost of these reports until 31 December 2026/)
 	assert.match(notice.text, /http:\/\/app\.test\/companies\/.+\/settings/)
+	// DEC-014: a company with a plan for after the free period is not told
+	// to choose one; a plan set to end is no plan.
+	const resend = async () => {
+		await q("DELETE FROM notification WHERE user_id = $1", [u.id])
+		await sendWeeklyEmails({pool: worker, mailer, appUrl: 'http://app.test', week: '2026-12-07', emailFor: weeklyReportEmail})
+		return mailer.outbox.filter((m) => m.to == 'founder@l.example').at(-1).text
+	}
+	await q(`INSERT INTO company_billing (company_id, stripe_customer_id, stripe_subscription_id, plan, billing_interval, status)
+		VALUES ($1, 'cus_l', 'sub_l', 'subscription', 'year', 'trialing')`, [l.id])
+	assert.doesNotMatch(await resend(), /covering the AI cost/)
+	await q('UPDATE company_billing SET cancel_at_period_end = true WHERE company_id = $1', [l.id])
+	assert.match(await resend(), /covering the AI cost/)
+	await q('DELETE FROM company_billing WHERE company_id = $1', [l.id])
 	await endFreePeriod()
 })
 

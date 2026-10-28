@@ -16,3 +16,7 @@ export const LIVE_PLAN_STATUSES = ['trialing', 'active', 'past_due']
 // The end-of-free-period notice starts this many days before the end, and
 // checkout opens with it.
 export const FREE_PERIOD_NOTICE_DAYS = 28
+
+// A company with a live plan that is not set to end is covered after the
+// free period, so the end-of-free-period notices skip it.
+export const hasPlanSql = (alias) => `coalesce(${alias}.status IN (${LIVE_PLAN_STATUSES.map((x) => `'${x}'`).join(', ')}) AND NOT ${alias}.cancel_at_period_end, false)`
