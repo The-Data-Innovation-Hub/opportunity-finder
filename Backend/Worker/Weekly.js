@@ -11,7 +11,7 @@ import {LIMITS} from './Research/tools.js'
 import {scopeRegions} from './Research/search.js'
 import {buildWorkbook} from './Report/workbook.js'
 import {providerFor} from './Providers/index.js'
-import {FREE_PERIOD_NOTICE_DAYS, LIVE_PLAN_STATUSES, hasPlanSql} from '../Services/Plans.js'
+import {CLUSTER, FREE_PERIOD_NOTICE_DAYS, LIVE_PLAN_STATUSES, hasPlanSql} from '../Services/Plans.js'
 
 export const COMPANY_CONCURRENCY = 5
 export const targetWeek = (now = new Date()) => weekStart(new Date(now.getTime() + 864e5))
@@ -376,11 +376,19 @@ const runCompanies = async ({pool, secrets, blobs, week, gather, companies, now,
 	// (DEC-014): a subscription runs on the programme's key, the own-key plan
 	// on the company's, and without a live plan there is no run. Where no free
 	// period was ever set, every company uses its own key, as before DEC-011.
+	// DEC-015: a Connected Health Cluster company has no free period: the
+	// programme pays for its first report only, then its plan decides.
 	const payerFor = async (companyId) => {
-		const {rows: [s]} = await pool.query(`SELECT s.free_period_until, b.plan, b.status FROM service_setting s
-			LEFT JOIN company_billing b ON b.company_id = $1 WHERE s.id = 1`, [companyId])
-		if (s.free_period_until == null) return 'company'
-		if (week <= s.free_period_until) return 'programme'
+		const {rows: [s]} = await pool.query(`SELECT s.free_period_until, c.cohort, b.plan, b.status,
+				EXISTS (SELECT 1 FROM report r WHERE r.company_id = c.id) AS has_report
+			FROM service_setting s JOIN company c ON c.id = $1
+			LEFT JOIN company_billing b ON b.company_id = c.id WHERE s.id = 1`, [companyId])
+		if (s.cohort == CLUSTER) {
+			if (!s.has_report) return 'programme'
+		} else {
+			if (s.free_period_until == null) return 'company'
+			if (week <= s.free_period_until) return 'programme'
+		}
 		if (!LIVE_PLAN_STATUSES.includes(s.status)) return 'none'
 		return s.plan == 'subscription' ? 'programme' : 'company'
 	}
@@ -467,7 +475,9 @@ export const runFirstReports = async ({pool, secrets, blobs, fetchers, mailer, a
 // One notification per report per member, inserted first so a retried job
 // never emails anyone twice; then every pending one is sent.
 // DEC-011: from four weeks before the free period ends, the email says so,
-// unless the company already has a plan for after it (DEC-014).
+// unless the company already has a plan for after it (DEC-014). DEC-015: a
+// Connected Health Cluster company without a plan is told its report was
+// free and a plan keeps them coming.
 export {FREE_PERIOD_NOTICE_DAYS}
 
 // companyIds: only these companies' reports (a first report); otherwise all.
@@ -480,7 +490,7 @@ export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, co
 		JOIN app_user u ON u.id = m.user_id AND u.disabled_at IS NULL
 		WHERE r.week_start = $1 AND ($2::uuid[] IS NULL OR r.company_id = ANY($2)) ON CONFLICT (report_id, user_id) DO NOTHING`, [week, companyIds])
 	const {rows} = await pool.query(`SELECT n.id, n.attempts, u.email, c.name AS company_name, c.id AS company_id, r.id AS report_id,
-			r.funding_rows, r.tender_rows, r.new_this_week, r.top_five, ${hasPlanSql('b')} AS has_plan
+			r.funding_rows, r.tender_rows, r.new_this_week, r.top_five, c.cohort, ${hasPlanSql('b')} AS has_plan
 		FROM notification n JOIN report r ON r.id = n.report_id JOIN company c ON c.id = n.company_id JOIN app_user u ON u.id = n.user_id
 		LEFT JOIN company_billing b ON b.company_id = c.id
 		WHERE r.week_start = $1 AND ($2::uuid[] IS NULL OR r.company_id = ANY($2)) AND n.status IN ('pending', 'failed') AND n.attempts < 3`, [week, companyIds])
@@ -494,7 +504,7 @@ export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, co
 		try {
 			await mailer.send({to: n.email, ...emailFor({companyName: n.company_name, link: `${appUrl}/companies/${n.company_id}/reports/${n.report_id}`,
 				fundingRows: n.funding_rows, tenderRows: n.tender_rows, newThisWeek: n.new_this_week, topFive: n.top_five,
-				freePeriodEnds: n.has_plan ? null : freePeriodEnds, settingsLink: `${appUrl}/companies/${n.company_id}/settings`})})
+				freePeriodEnds: n.has_plan || n.cohort == CLUSTER ? null : freePeriodEnds, planNeeded: !n.has_plan && n.cohort == CLUSTER, settingsLink: `${appUrl}/companies/${n.company_id}/settings`})})
 			await pool.query(`UPDATE notification SET status = 'sent', sent_at = now() WHERE id = $1`, [n.id])
 			sent += 1
 		} catch (error) {

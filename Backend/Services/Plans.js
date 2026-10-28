@@ -17,6 +17,12 @@ export const LIVE_PLAN_STATUSES = ['trialing', 'active', 'past_due']
 // checkout opens with it.
 export const FREE_PERIOD_NOTICE_DAYS = 28
 
+// DEC-015: the groups a company can belong to. AI in Healthcare programme
+// members have the free period; Connected Health Cluster members get their
+// first report on the programme, then need a plan straight away.
+export const COHORTS = ['ai_in_healthcare', 'connected_health_cluster']
+export const CLUSTER = 'connected_health_cluster'
+
 // A company with a live plan that is not set to end is covered after the
 // free period, so the end-of-free-period notices skip it.
 export const hasPlanSql = (alias) => `coalesce(${alias}.status IN (${LIVE_PLAN_STATUSES.map((x) => `'${x}'`).join(', ')}) AND NOT ${alias}.cancel_at_period_end, false)`

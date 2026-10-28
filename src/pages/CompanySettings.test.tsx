@@ -2,7 +2,7 @@ import {afterEach, expect, test, vi} from 'vitest'
 import {screen} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {COMPANY_ID, meAs, mockApi, renderApp, type ApiRoutes} from '../test/app'
-import type {Billing, Role} from '../api'
+import type {Billing, Cohort, Role} from '../api'
 
 const base = `/companies/${COMPANY_ID}`
 const routes = (role: Role, extra: ApiRoutes = {}): ApiRoutes => ({
@@ -20,7 +20,7 @@ const routes = (role: Role, extra: ApiRoutes = {}): ApiRoutes => ({
 // DEC-014: no free period set, so no plan is needed and the card is hidden.
 const billing = (over: Partial<Billing> = {}): Billing => ({billing: null, hasAccount: false, available: true,
 	prices: {subscription: {month: 3000, year: 30000}, own_key: {month: 1000, year: 10000}},
-	freePeriodUntil: null, checkoutOpensOn: null, plansRequiredFrom: null, ...over})
+	cohort: 'ai_in_healthcare', freePeriodUntil: null, checkoutOpensOn: null, plansRequiredFrom: null, firstReportFree: false, ...over})
 const ending = {freePeriodUntil: '2027-01-31', checkoutOpensOn: '2027-01-03', plansRequiredFrom: '2027-02-01'}
 const on = (day: string) => vi.useFakeTimers({toFake: ['Date'], now: new Date(`${day}T10:00:00Z`)})
 afterEach(() => { vi.useRealTimers() })
@@ -136,8 +136,9 @@ test('BEH-017 after the free period a company without a plan is told its runs ar
 })
 
 // A /me with a free period ending soon and these companies.
-const meWith = (companies: {hasPlan: boolean, name?: string, id?: string}[]) => ({...meAs('company_admin'), freePeriod: {until: '2027-01-31', keyWorking: true},
-	companies: companies.map((c, i) => ({id: c.id ?? COMPANY_ID, name: c.name ?? 'Care Routing Ltd', status: 'active', role: i ? 'company_member' as const : 'company_admin' as const, hasPlan: c.hasPlan}))})
+const meWith = (companies: {hasPlan: boolean, name?: string, id?: string, cohort?: Cohort}[]) => ({...meAs('company_admin'), freePeriod: {until: '2027-01-31', keyWorking: true},
+	companies: companies.map((c, i) => ({id: c.id ?? COMPANY_ID, name: c.name ?? 'Care Routing Ltd', status: 'active', role: i ? 'company_member' as const : 'company_admin' as const,
+		cohort: c.cohort ?? 'ai_in_healthcare', hasPlan: c.hasPlan}))})
 
 test('DEC-014 the free-period notice shows only for companies still without a plan for after it', async () => {
 	on('2027-01-10')
@@ -157,4 +158,42 @@ test('DEC-014 the free-period notice shows only for companies still without a pl
 	mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: true}, {hasPlan: false, name: 'Second Co', id: 'c2'}])}}))
 	renderApp(`${base}/settings`)
 	expect(await screen.findByText(/chooses a plan under Settings for Second Co:/)).toBeInTheDocument()
+})
+
+// DEC-015: a Connected Health Cluster company has no free period.
+const cluster = {cohort: 'connected_health_cluster' as const, plansRequiredFrom: '2026-10-28'}
+
+test('DEC-015 a Cluster company before its first report can buy a plan now and is told the first report is free', async () => {
+	on('2026-11-02')
+	const user = userEvent.setup()
+	const calls = mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: false, cohort: 'connected_health_cluster'}])},
+		[`GET ${base}/billing`]: {body: billing({...cluster, firstReportFree: true})},
+		[`POST ${base}/billing/checkout`]: {body: {url: 'https://checkout.stripe.test/session'}}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('First report free')).toBeInTheDocument()
+	expect(screen.getByText(/Your first report is free\. To keep receiving a report every week after it, choose a plan\./)).toBeInTheDocument()
+	// The banner says so too, and nothing mentions the AI in Healthcare free period.
+	expect(screen.getByText(/Connected Health Cluster members get their first report free\. To receive a report every week/)).toBeInTheDocument()
+	expect(await screen.findByText('Not needed for your free first report')).toBeInTheDocument()
+	expect(screen.queryByText(/Covered by the programme/)).toBeNull()
+	expect(screen.queryByText(/until 31 Jan 2027/)).toBeNull()
+	await user.click(screen.getByRole('button', {name: 'Choose subscription'}))
+	await vi.waitFor(() => expect(calls.find((c) => c.method == 'POST')?.body).toEqual({plan: 'subscription', interval: 'month'}))
+})
+
+test('DEC-015 a Cluster company after its first report without a plan is told its runs are paused', async () => {
+	on('2026-11-10')
+	mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: false, cohort: 'connected_health_cluster'}])},
+		[`GET ${base}/billing`]: {body: billing(cluster)}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('No plan: weekly runs are paused')).toBeInTheDocument()
+	expect(screen.getByText(/Your weekly reports are paused until a company admin chooses a plan/)).toBeInTheDocument()
+})
+
+test('DEC-015 a Cluster company with a plan sees no notice', async () => {
+	on('2026-11-10')
+	mockApi(routes('company_admin', {'GET /me': {body: meWith([{hasPlan: true, cohort: 'connected_health_cluster'}])}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByLabelText('What does your product do, and for whom?')).toBeInTheDocument()
+	expect(screen.queryByText(/chooses a plan under Settings/)).toBeNull()
 })

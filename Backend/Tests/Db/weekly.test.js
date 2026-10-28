@@ -457,3 +457,42 @@ test('DEC-011 a retry reuses research the programme paid for, even after the fre
 	const run = await runOf(c, '2027-02-15')
 	assert.deepEqual([run.paid_by, Number(run.model_cost_usd)], ['programme', 1.5])
 })
+
+// --- DEC-015: Connected Health Cluster companies ------------------------------------
+
+test('DEC-015 a Connected Health Cluster company gets its first report on the programme key, then runs only on a plan', async () => {
+	const c = await company('Cluster Ltd')
+	await q("UPDATE company SET cohort = 'connected_health_cluster' WHERE id = $1", [c])
+	await onlyActive(c)
+	// The AI in Healthcare free period is on; it does not cover the cluster.
+	await freePeriod()
+	const run = (day) => runWeek({pool: worker, secrets, blobs, fetchers, now: new Date(`${day}T22:00:00Z`), providers: () => scriptedProvider(), ...silent})
+
+	providerCalls = []
+	assert.equal((await run('2027-03-07')).outcomes[c].status, 'succeeded')
+	assert.equal((await runOf(c, '2027-03-08')).paid_by, 'programme')
+	assert.ok(providerCalls.every((p) => p.apiKey == PROGRAMME_KEY))
+
+	// The first report's email says it was free and how to keep them coming.
+	const {rows: [u]} = await q("INSERT INTO app_user (email) VALUES ('founder@cluster.example') RETURNING id")
+	await q("INSERT INTO company_membership (company_id, user_id, role) VALUES ($1, $2, 'company_admin')", [c, u.id])
+	const mailer = createOutboxMailer({environment: 'test'})
+	await sendWeeklyEmails({pool: worker, mailer, appUrl: 'http://app.test', week: '2027-03-08', emailFor: weeklyReportEmail})
+	const sent = mailer.outbox.find((m) => m.to == 'founder@cluster.example').text
+	assert.match(sent, /Connected Health Cluster members get their first report free\. To keep receiving a report every week, a company admin chooses a plan/)
+	assert.doesNotMatch(sent, /covering the AI cost/)
+
+	assert.equal((await run('2027-03-14')).outcomes[c].reason, 'no_plan')
+
+	await q(`INSERT INTO company_billing (company_id, stripe_customer_id, stripe_subscription_id, plan, billing_interval, status)
+		VALUES ($1, 'cus_cluster', 'sub_cluster', 'own_key', 'month', 'active')`, [c])
+	providerCalls = []
+	assert.equal((await run('2027-03-21')).outcomes[c].status, 'succeeded')
+	assert.equal((await runOf(c, '2027-03-22')).paid_by, 'company')
+	assert.ok(providerCalls.every((p) => p.apiKey != PROGRAMME_KEY))
+
+	await q("UPDATE company_billing SET plan = 'subscription' WHERE company_id = $1", [c])
+	assert.equal((await run('2027-03-28')).outcomes[c].status, 'succeeded')
+	assert.equal((await runOf(c, '2027-03-29')).paid_by, 'programme')
+	await endFreePeriod()
+})

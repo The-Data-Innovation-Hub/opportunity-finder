@@ -38,7 +38,8 @@ export const CompanySettings = () => {
 			{!isAdmin && <Notice>You can view these settings. Only your company admins can change them.</Notice>}
 			<ProfileForm companyId={companyId} isAdmin={isAdmin} />
 			<PlanSettings companyId={companyId} isAdmin={isAdmin} />
-			<KeySettings companyId={companyId} isAdmin={isAdmin} freePeriod={me.data!.freePeriod} />
+			{/* DEC-015: the free period is for AI in Healthcare programme members only. */}
+			<KeySettings companyId={companyId} isAdmin={isAdmin} freePeriod={company.cohort == 'ai_in_healthcare' ? me.data!.freePeriod : null} />
 			<Members companyId={companyId} isAdmin={isAdmin} myId={me.data!.user.id} />
 		</div>
 	)
@@ -151,6 +152,7 @@ const planBadge = (b: Billing) => {
 		if (p.cancelAtPeriodEnd) return <Badge tone="warn">Ends {formatDate(p.currentPeriodEnd)}</Badge>
 		return <Badge tone="good">{PLAN_LABELS[p.plan].name}, {priceText(b.prices, p.plan, p.interval)}</Badge>
 	}
+	if (b.firstReportFree) return <Badge>First report free</Badge>
 	if (b.plansRequiredFrom && today() >= b.plansRequiredFrom) return <Badge tone="bad">No plan: weekly runs are paused</Badge>
 	return null
 }
@@ -217,9 +219,11 @@ const PlanSettings = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean
 			) : (
 				<>
 					<p className="text-sm text-muted">
-						{required
-							? 'Your weekly reports are paused until a company admin chooses a plan.'
-							: `The programme covers your reports until ${formatDate(b.freePeriodUntil)}. To keep them after that, choose a plan. Choosing early costs nothing until ${formatDate(b.plansRequiredFrom)}.`}
+						{b.firstReportFree
+							? 'Your first report is free. To keep receiving a report every week after it, choose a plan. Payment is taken when you choose.'
+							: required
+								? 'Your weekly reports are paused until a company admin chooses a plan.'
+								: `The programme covers your reports until ${formatDate(b.freePeriodUntil)}. To keep them after that, choose a plan. Choosing early costs nothing until ${formatDate(b.plansRequiredFrom)}.`}
 						{' '}Prices exclude VAT. Payments are taken by Stripe; card details never reach this site.
 					</p>
 					<div className="mt-4 inline-flex rounded-md border border-line p-0.5" role="group" aria-label="Billing period">
@@ -258,9 +262,10 @@ const PlanSettings = ({companyId, isAdmin}: {companyId: string, isAdmin: boolean
 
 // DEC-011: "covered" only while the programme's runs are actually working.
 const freeBlocked = (free: Me['freePeriod'], skip: ProgrammeSkip) => free != null && (!free.keyWorking || skip != null)
-const statusBadge = (c: Credential, free: Me['freePeriod'], skip: ProgrammeSkip, subscribed: boolean) => free
+const statusBadge = (c: Credential, free: Me['freePeriod'], skip: ProgrammeSkip, subscribed: boolean, firstReportFree: boolean) => free
 	? (freeBlocked(free, skip) ? <Badge tone="warn">Free period: runs paused</Badge> : <Badge tone="good">Covered by the programme until {formatDate(free.until)}</Badge>)
 	: subscribed ? <Badge tone="good">Not needed: your subscription covers the AI</Badge>
+	: firstReportFree && !c.configured ? <Badge>Not needed for your free first report</Badge>
 	: !c.configured ? <Badge tone="warn">No key: weekly runs are paused</Badge>
 	: c.status == 'valid' ? <Badge tone="good">Working</Badge>
 	: c.status == 'invalid' ? <Badge tone="bad">Key rejected: please replace it</Badge>
@@ -272,8 +277,11 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 	const credential = useQuery({queryKey: ['credential', companyId], queryFn: () => api.get<Responses['GET /companies/:companyId/llm-credential']>(`/companies/${companyId}/llm-credential`)})
 	const models = useQuery({queryKey: ['models'], queryFn: () => api.get<Responses['GET /models']>('/models')})
 	// DEC-014: on the subscription the programme's key is used, so none is needed.
-	const plan = useBilling(companyId).data?.billing
+	const terms = useBilling(companyId).data
+	const plan = terms?.billing
 	const subscribed = Boolean(plan?.live && plan.plan == 'subscription')
+	// DEC-015: a Connected Health Cluster company's first report runs on the programme's key.
+	const firstReportFree = Boolean(terms?.firstReportFree)
 	const [choice, setChoice] = useState('')
 	const [apiKey, setApiKey] = useState('')
 	const [editing, setEditing] = useState(false)
@@ -303,7 +311,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 	const modelList = models.data.models
 
 	return (
-		<Card title="AI provider" action={statusBadge(c, freePeriod, skip, subscribed)}>
+		<Card title="AI provider" action={statusBadge(c, freePeriod, skip, subscribed, firstReportFree)}>
 			{freeBlocked(freePeriod, skip) && (
 				<div className="mb-3"><Notice tone="warn">
 					{skip?.reason == 'programme_budget_reached'
@@ -316,7 +324,7 @@ const KeySettings = ({companyId, isAdmin, freePeriod}: {companyId: string, isAdm
 					Until {formatDate(freeUntil)} the programme pays for the AI work behind your weekly reports, so you do not need a key. A key you add now is kept and used from then on{c.configured && c.status != 'valid' ? ', so please replace the one below' : ''}.
 				</Notice></div>
 			)}
-			<p className="text-sm text-muted">{freeUntil ? 'On the own-key plan, after the free period, the weekly search' : 'The weekly search'} runs on your own AI provider account, so its cost (typically about {modelList[0]?.typicalCostUsd != null ? `US$${modelList[0].typicalCostUsd.toFixed(2)}` : 'a few dollars'} a week) is billed to you. Your key is stored in a secure key vault. It is never shown again, and only its last four characters are kept here.</p>
+			<p className="text-sm text-muted">{freeUntil ? 'On the own-key plan, after the free period, the weekly search' : terms?.plansRequiredFrom ? 'On the own-key plan, the weekly search' : 'The weekly search'} runs on your own AI provider account, so its cost (typically about {modelList[0]?.typicalCostUsd != null ? `US$${modelList[0].typicalCostUsd.toFixed(2)}` : 'a few dollars'} a week) is billed to you. Your key is stored in a secure key vault. It is never shown again, and only its last four characters are kept here.</p>
 			{c.configured && (
 				<dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
 					<dt className="text-muted">Model</dt><dd>{modelList.find((m) => m.model == c.model)?.label ?? c.model}</dd>

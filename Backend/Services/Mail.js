@@ -56,12 +56,18 @@ export const invitationEmail = ({link, companyName, days}) => ({
 const longDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'})
 const freePeriodNotice = (until) => `The programme is covering the AI cost of these reports until ${longDate(until)}. To keep receiving them after that, a company admin chooses a plan in Settings: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT). Choosing now costs nothing until then.`
 
-export const weeklyReportEmail = ({companyName, link, fundingRows, tenderRows, newThisWeek, topFive, freePeriodEnds = null, settingsLink}) => ({
-	subject: `${companyName}: this week's funding and tenders (${newThisWeek} new)`,
-	text: [`This week's report for ${companyName} is ready: ${fundingRows} funding opportunities and ${tenderRows} tenders, ${newThisWeek} new this week.`,
-		'', 'Top 5:', ...topFive.map((t, i) => `${i + 1}. ${t.name}`), '', `View and download it here: ${link}`,
-		...(freePeriodEnds ? ['', freePeriodNotice(freePeriodEnds), `Settings: ${settingsLink}`] : [])].join('\n'),
-	html: `<p>This week's report for ${escapeHtml(companyName)} is ready: ${fundingRows} funding opportunities and ${tenderRows} tenders, <strong>${newThisWeek} new this week</strong>.</p>`
-		+ `<p>Top 5:</p><ol>${topFive.map((t) => `<li>${escapeHtml(t.name)}</li>`).join('')}</ol><p><a href="${escapeHtml(link)}">View and download the report</a></p>`
-		+ (freePeriodEnds ? `<p>${escapeHtml(freePeriodNotice(freePeriodEnds))} <a href="${escapeHtml(settingsLink)}">Open Settings</a></p>` : ''),
-})
+// DEC-015: a Connected Health Cluster company's first report is free; later ones need a plan.
+const planNeededNotice = 'Connected Health Cluster members get their first report free. To keep receiving a report every week, a company admin chooses a plan in Settings: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT).'
+
+export const weeklyReportEmail = ({companyName, link, fundingRows, tenderRows, newThisWeek, topFive, freePeriodEnds = null, planNeeded = false, settingsLink}) => {
+	const notice = freePeriodEnds ? freePeriodNotice(freePeriodEnds) : planNeeded ? planNeededNotice : null
+	return {
+		subject: `${companyName}: this week's funding and tenders (${newThisWeek} new)`,
+		text: [`This week's report for ${companyName} is ready: ${fundingRows} funding opportunities and ${tenderRows} tenders, ${newThisWeek} new this week.`,
+			'', 'Top 5:', ...topFive.map((t, i) => `${i + 1}. ${t.name}`), '', `View and download it here: ${link}`,
+			...(notice ? ['', notice, `Settings: ${settingsLink}`] : [])].join('\n'),
+		html: `<p>This week's report for ${escapeHtml(companyName)} is ready: ${fundingRows} funding opportunities and ${tenderRows} tenders, <strong>${newThisWeek} new this week</strong>.</p>`
+			+ `<p>Top 5:</p><ol>${topFive.map((t) => `<li>${escapeHtml(t.name)}</li>`).join('')}</ol><p><a href="${escapeHtml(link)}">View and download the report</a></p>`
+			+ (notice ? `<p>${escapeHtml(notice)} <a href="${escapeHtml(settingsLink)}">Open Settings</a></p>` : ''),
+	}
+}

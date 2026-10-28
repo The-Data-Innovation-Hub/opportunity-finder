@@ -10,7 +10,7 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 | Approved | 1 |
 | In progress | 5 |
 | Blocked | 1 |
-| Verified | 29 |
+| Verified | 30 |
 | Not applicable | 1 |
 
 ## Requirements
@@ -34,6 +34,7 @@ Status as of 23 Oct 2026. Nothing is deployed to Azure yet, so every Azure integ
 | BEH-015 | First report without waiting for Sunday | Verified | `runFirstReports` in `Worker/Weekly.js`, `first-reports` job in `Infra/main.bicep`, first-report card in `src/pages/CompanyReport.tsx` | `Tests/Db/first-report.test.js` (6 tests), `CompanyReport.test.tsx` BEH-015 | New job needs a Bicep deploy |
 | BEH-016 | Plans after the free period, bought on Stripe Checkout | In progress | `API/Billing.js`, `Services/Billing.js`, `Services/Plans.js`, `company_billing` (0006), Plan card in `src/pages/CompanySettings.tsx`, plan column and cap warning in `src/pages/Admin.tsx` | `Tests/Db/billing.test.js` BEH-016 (9 tests); `CompanySettings.test.tsx` BEH-016 (4 tests); contract capture | Verified against the in-memory Stripe stand-in; a Stripe test-mode run end to end is still to do (DEPLOYMENT.md, "Billing") |
 | BEH-017 | Who pays for a run follows the plan after the free period | Verified | `payerFor` in `runCompanies` (`Worker/Weekly.js`), `no_plan` skip reason (0006) | `Tests/Db/billing-runs.test.js` (5 tests); `weekly.test.js` "DEC-011 and DEC-014 after the free period…"; `CompanySettings.test.tsx` BEH-017 | |
+| BEH-018 | Groups: AI in Healthcare (free period) and Connected Health Cluster (first report free, then a plan) | Verified | `company.cohort` (0007), `payerFor` in `Worker/Weekly.js`, `termsOf` in `API/Billing.js`, admin `POST`/`PATCH /admin/companies`, `/me`, `Layout.tsx`, `CompanySettings.tsx`, `Admin.tsx`, `Services/Mail.js` | `weekly.test.js` DEC-015; `billing.test.js` DEC-015 (2 tests); `CompanySettings.test.tsx` DEC-015 (3 tests); `Admin.test.tsx` DEC-015 | Buying a plan in live mode waits on Stripe live set-up (BEH-016) |
 | SEC-001 | Strict tenant isolation | Verified | Membership check in every company query; composite tenant FKs | `api.test.js` two SEC-001 tests; `schema.test.js` SEC-001 | |
 | SEC-002 | Keys are write-only, Key Vault only | Verified | `Services/SecretStore.js`, separate keys vault in `main.bicep` | `api.test.js` "SEC-002…never returned or logged" (checks responses, DB row and every log line) | Verified with the in-memory store; Key Vault untested |
 | SEC-003 | Sign-in and sessions resist misuse | Verified | `API/Auth.js`, `requireSameOrigin` | `api.test.js` DEC-001 and SEC-003 tests (single use, expiry, no enumeration, revocation, origin) | Rate limits are per replica |

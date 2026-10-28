@@ -105,13 +105,13 @@ export const companyRoutes = ({pool, secrets, blobs, mailer, appUrl, checkKey}) 
 	const member = requireMember(pool)
 
 	router.get('/me', async (request, response) => {
-		const {rows} = await pool.query(`SELECT c.id, c.name, c.status, m.role, ${hasPlanSql('b')} AS has_plan
+		const {rows} = await pool.query(`SELECT c.id, c.name, c.status, c.cohort, m.role, ${hasPlanSql('b')} AS has_plan
 			FROM company_membership m JOIN company c ON c.id = m.company_id LEFT JOIN company_billing b ON b.company_id = c.id
 			WHERE m.user_id = $1 ORDER BY c.name`, [request.user.id])
 		response.json({
 			user: {id: request.user.id, email: request.user.email, displayName: request.user.display_name},
 			isProgrammeAdmin: request.user.is_programme_admin,
-			companies: rows.map((r) => ({id: r.id, name: r.name, status: r.status, role: r.role, hasPlan: r.has_plan})),
+			companies: rows.map((r) => ({id: r.id, name: r.name, status: r.status, role: r.role, cohort: r.cohort, hasPlan: r.has_plan})),
 			freePeriod: await freePeriodFor(pool),
 		})
 	})
