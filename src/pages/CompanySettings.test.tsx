@@ -117,6 +117,16 @@ test('BEH-016 a subscriber in its trial sees when the first payment is, can mana
 	expect(await screen.findByText('Not needed: your subscription covers the AI')).toBeInTheDocument()
 })
 
+test('BEH-016 a trial cancelled in the portal shows when the plan ends, not a first payment', async () => {
+	on('2027-01-10')
+	mockApi(routes('company_admin', {[`GET ${base}/billing`]: {body: billing({...ending, hasAccount: true,
+		billing: {plan: 'subscription', interval: 'year', status: 'trialing', live: true, currentPeriodEnd: '2027-02-01T00:00:00Z', cancelAtPeriodEnd: true}})}}))
+	renderApp(`${base}/settings`)
+	expect(await screen.findByText('Ends 1 Feb 2027')).toBeInTheDocument()
+	expect(screen.getByText('Ends')).toBeInTheDocument()
+	expect(screen.queryByText('First payment')).toBeNull()
+})
+
 test('BEH-017 after the free period a company without a plan is told its runs are paused', async () => {
 	on('2027-02-03')
 	mockApi(routes('company_admin', {[`GET ${base}/billing`]: {body: billing(ending)}}))

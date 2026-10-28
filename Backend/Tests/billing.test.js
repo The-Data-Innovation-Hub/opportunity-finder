@@ -17,6 +17,17 @@ test('DEC-014 a subscription is stored by its price, with the period from the it
 		['cus_1', null, '2027-02-01T00:00:00.000Z'])
 })
 
+test('DEC-014 a plan cancelled in the portal (cancel_at, API 2025-03-31 on) or by the older flag is ending, at the earlier date', () => {
+	const s = {id: 'sub_1', customer: 'cus_1', status: 'trialing', cancel_at_period_end: false, cancel_at: 1795132800,
+		items: {data: [{price: {id: 'price_sub_year'}, current_period_end: 1795132800}]}}
+	assert.deepEqual([toSubscription(s, planOfPrice).cancelAtPeriodEnd, toSubscription(s, planOfPrice).currentPeriodEnd], [true, '2026-11-20T00:00:00.000Z'])
+	const sooner = {...s, cancel_at: 1794528000}
+	assert.equal(toSubscription(sooner, planOfPrice).currentPeriodEnd, '2026-11-13T00:00:00.000Z')
+	const older = {...s, cancel_at: null, cancel_at_period_end: true}
+	assert.deepEqual([toSubscription(older, planOfPrice).cancelAtPeriodEnd, toSubscription(older, planOfPrice).currentPeriodEnd], [true, '2026-11-20T00:00:00.000Z'])
+	assert.equal(toSubscription({...s, cancel_at: null}, planOfPrice).cancelAtPeriodEnd, false)
+})
+
 test('DEC-014 events lead to their subscription; others to nothing', () => {
 	const of = (type, object) => subscriptionIdOf({type, data: {object}})
 	assert.equal(of('checkout.session.completed', {mode: 'subscription', subscription: 'sub_1'}), 'sub_1')
