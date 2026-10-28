@@ -262,6 +262,14 @@ read -s STRIPE_KEY && az keyvault secret set --subscription 7f4b2261-9d3d-454a-9
 read -s STRIPE_WHSEC && az keyvault secret set --subscription 7f4b2261-9d3d-454a-97b8-132f44da56f2 --vault-name <appVaultName> -n stripe-webhook-secret --value "$STRIPE_WHSEC" -o none && unset STRIPE_WHSEC && echo ok
 ```
 
+   Then let the API read just these two secrets. Re-running `Infra/grant-roles.sh` (step 5) does it, or grant them directly. Without this the API's new revision fails to start (`Unable to get value using Managed identity ... for secret stripe-secret-key`) and the deploy fails:
+
+```bash
+S=7f4b2261-9d3d-454a-97b8-132f44da56f2; V=$(az keyvault show --subscription $S -n <appVaultName> --query id -o tsv); API=$(az identity show --subscription $S -g rg-opportunity-finder -n id-oppfinder-api --query principalId -o tsv); for sec in stripe-secret-key stripe-webhook-secret; do az role assignment create --subscription $S --assignee-object-id $API --assignee-principal-type ServicePrincipal --role "Key Vault Secrets User" --scope "$V/secrets/$sec" -o none && echo "ok $sec"; done
+```
+
+   A new role grant can take a few minutes to take effect; if the deploy still fails the same way, wait and deploy again.
+
 8. **Turn it on.** In `Infra/main.bicepparam`, set `enableBilling = true` and the four `stripePrice...` ids, then deploy as in step 6.
 9. **Raise the programme cap.** Raise the monthly AI cap on the Admin page before 1 Feb 2027. Subscribers run on the programme key with no cap of their own, so allow about US$30 per subscriber. The Free period card warns when the cap is lower than that.
 

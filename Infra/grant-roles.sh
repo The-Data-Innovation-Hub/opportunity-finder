@@ -53,6 +53,16 @@ grant "$WORKER" "Key Vault Secrets User" "$APP_VAULT/secrets/brave-search-api-ke
 grant "$WORKER" "Key Vault Secrets User" "$APP_VAULT/secrets/scraper-shared-secret"
 grant "$MIGRATE" "Key Vault Secrets User" "$APP_VAULT/secrets/migrate-database-url"
 
+echo "== billing secrets (DEC-014): the API only, once both are in the vault"
+# Without these the API revision fails to start when enableBilling is true.
+if az keyvault secret show --subscription "$SUBSCRIPTION" --vault-name "$(out appVaultName)" -n stripe-secret-key --query id -o tsv >/dev/null 2>&1 \
+	&& az keyvault secret show --subscription "$SUBSCRIPTION" --vault-name "$(out appVaultName)" -n stripe-webhook-secret --query id -o tsv >/dev/null 2>&1; then
+	grant "$API" "Key Vault Secrets User" "$APP_VAULT/secrets/stripe-secret-key"
+	grant "$API" "Key Vault Secrets User" "$APP_VAULT/secrets/stripe-webhook-secret"
+else
+	echo "skip  Stripe secrets not set yet: re-run after Infra/DEPLOYMENT.md step 11.7"
+fi
+
 echo "== company LLM keys (SEC-002): the API can write but not read; the worker reads"
 if [ -z "$(az role definition list --subscription "$SUBSCRIPTION" --name "$ROLE_KEY_WRITER" --custom-role-only true --query "[0].id" -o tsv)" ]; then
 	az role definition create --subscription "$SUBSCRIPTION" --role-definition "{
