@@ -58,7 +58,7 @@ test('DEC-014 a trial ends at midnight UK time, in winter and in summer', () => 
 	assert.equal(londonMidnight('2027-07-01').toISOString(), '2027-06-30T23:00:00.000Z')
 })
 
-test('DEC-014 the real client pins the API version, tags checkout sessions and offers every call the stand-in does', async () => {
+test('DEC-014 the real client pins the API version, tags checkout sessions, keeps Managed Payments off and offers every call the stand-in does', async () => {
 	const requests = []
 	const server = createServer((request, response) => {
 		let body = ''
@@ -84,6 +84,9 @@ test('DEC-014 the real client pins the API version, tags checkout sessions and o
 		assert.match(checkout.body.get('integration_identifier'), /^opportunity_finder_plans_[a-z]{8}$/)
 		assert.equal(checkout.body.get('line_items[0][price]'), 'stripe_price_subscription_year_test')
 		assert.equal(checkout.body.has('payment_method_types[0]'), false)
+		// The Data Innovation Hub is the seller of record, never Stripe.
+		assert.equal(checkout.body.get('managed_payments[enabled]'), 'false')
+		assert.equal(checkout.body.get('automatic_tax[enabled]'), 'true')
 	} finally {
 		server.close()
 	}

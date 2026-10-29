@@ -84,7 +84,9 @@ export const createBilling = (env = process.env, connection = {}) => {
 	return {
 		createCustomer: async ({companyId, name}) => (await stripe.customers.create({name, metadata: {company_id: companyId}})).id,
 		// Prices exclude VAT; Stripe Tax adds UK VAT, and a business that gives
-		// an EU VAT number is reverse-charged.
+		// an EU VAT number is reverse-charged. The Data Innovation Hub is the
+		// seller: Managed Payments (Stripe as merchant of record) is turned off
+		// here so an account-level default cannot switch it on.
 		checkoutUrl: async ({customerId, companyId, plan, interval, trialEnd, successUrl, cancelUrl}) => (await stripe.checkout.sessions.create({
 			mode: 'subscription',
 			customer: customerId,
@@ -93,6 +95,7 @@ export const createBilling = (env = process.env, connection = {}) => {
 			subscription_data: {metadata: {company_id: companyId}, ...(trialEnd ? {trial_end: Math.floor(trialEnd.getTime() / 1000)} : {})},
 			automatic_tax: {enabled: true},
 			tax_id_collection: {enabled: true},
+			managed_payments: {enabled: false},
 			billing_address_collection: 'required',
 			customer_update: {address: 'auto', name: 'auto'},
 			success_url: successUrl,
