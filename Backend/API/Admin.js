@@ -5,6 +5,7 @@ import express from 'express'
 import {audit, email, forbidden, invalid, isoDate, notFound, oneOf, text, uuidParam, weekStart, withTransaction} from './Library.js'
 import {acceptKey, inviteToCompany, sendInvitation} from './Companies.js'
 import {COHORTS, LIVE_PLAN_STATUSES} from '../Services/Plans.js'
+import {accessRequestAdminRoutes} from './AccessRequests.js'
 
 const requireProgrammeAdmin = (request, response, next) => {
 	if (!request.user.is_programme_admin) throw forbidden()
@@ -22,6 +23,7 @@ export const PROGRAMME_SECRET_PREFIX = 'programme-llm-'
 export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () => new Date()}) => {
 	const router = express.Router()
 	router.use('/admin', requireProgrammeAdmin)
+	router.use(accessRequestAdminRoutes({pool}))
 
 	router.get('/admin/companies', async (request, response) => {
 		const {rows} = await pool.query(`SELECT c.id, c.name, c.status, c.cohort, c.created_at,

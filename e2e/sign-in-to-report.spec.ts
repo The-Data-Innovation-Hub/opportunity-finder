@@ -1,7 +1,7 @@
 import {expect, test} from '@playwright/test'
 
 // One real journey through the built app, the API and a fresh database:
-// sign in with an emailed link, read the week's report, open settings,
+// start at the landing page, sign in with an emailed link, read the week's report, open settings,
 // sign out. Any console error (a CSP violation included) fails it.
 test('a company admin signs in, reads the report, opens settings and signs out', async ({page, request}) => {
 	const errors: string[] = []
@@ -11,7 +11,10 @@ test('a company admin signs in, reads the report, opens settings and signs out',
 	})
 	page.on('pageerror', (error) => errors.push(error.message))
 
+	// Signed out, the home page is the landing page (BEH-019).
 	await page.goto('/')
+	await expect(page.getByRole('heading', {level: 1, name: /Funding and tenders that fit your company/})).toBeVisible()
+	await page.getByRole('navigation', {name: 'Main'}).getByRole('link', {name: 'Sign in'}).click()
 	await expect(page).toHaveURL(/\/sign-in$/)
 	await page.getByLabel('Email address').fill('founder@example.test')
 	await page.getByRole('button', {name: 'Email me a sign-in link'}).click()
@@ -50,6 +53,8 @@ test('a company admin signs in, reads the report, opens settings and signs out',
 	await page.getByRole('button', {name: 'Sign out'}).click()
 	await expect(page).toHaveURL(/\/sign-in$/)
 	await page.goto('/')
+	await expect(page.getByRole('link', {name: 'Request access'}).first()).toBeVisible()
+	await page.goto('/companies/00000000-0000-4000-8000-000000000000')
 	await expect(page).toHaveURL(/\/sign-in$/)
 
 	expect(errors).toEqual([])

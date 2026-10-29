@@ -1,6 +1,7 @@
 import {createRootRoute, createRoute, createRouter} from '@tanstack/react-router'
 import {Layout} from './components/Layout'
 import {SignIn} from './pages/SignIn'
+import {RequestAccess} from './pages/RequestAccess'
 import {Home} from './pages/Home'
 import {CompanyReport} from './pages/CompanyReport'
 import {CompanySettings} from './pages/CompanySettings'
@@ -9,6 +10,7 @@ import {NotFound} from './pages/NotFound'
 
 const root = createRootRoute({component: Layout, notFoundComponent: NotFound})
 const signIn = createRoute({getParentRoute: () => root, path: '/sign-in', component: SignIn})
+const requestAccess = createRoute({getParentRoute: () => root, path: '/request-access', component: RequestAccess})
 const home = createRoute({getParentRoute: () => root, path: '/', component: Home})
 const company = createRoute({getParentRoute: () => root, path: '/companies/$companyId', component: () => <CompanyReport {...company.useParams()} />})
 const report = createRoute({getParentRoute: () => root, path: '/companies/$companyId/reports/$reportId', component: () => <CompanyReport {...report.useParams()} />})
@@ -16,7 +18,7 @@ const settings = createRoute({getParentRoute: () => root, path: '/companies/$com
 const admin = createRoute({getParentRoute: () => root, path: '/admin', component: Admin})
 
 // Exported so tests can mount the real routes on a memory history.
-export const routeTree = root.addChildren([signIn, home, company, report, settings, admin])
+export const routeTree = root.addChildren([signIn, requestAccess, home, company, report, settings, admin])
 export const router = createRouter({routeTree})
 
 declare module '@tanstack/react-router' {

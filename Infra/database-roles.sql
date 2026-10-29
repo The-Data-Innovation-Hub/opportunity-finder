@@ -29,6 +29,8 @@ GRANT SELECT, UPDATE (search_enabled, brave_price_per_1000_usd, monthly_query_ca
 GRANT SELECT, INSERT, UPDATE, DELETE ON programme_llm_credential TO of_api;
 GRANT SELECT, INSERT, UPDATE ON company_billing TO of_api;
 GRANT SELECT, INSERT ON stripe_event TO of_api;
+GRANT SELECT, INSERT ON access_request TO of_api;
+GRANT UPDATE (handled_at, handled_by) ON access_request TO of_api;
 GRANT SELECT ON programme_admin, approved_model, weekly_gather, search_run, report, report_row, azure_cost_daily TO of_api;
 
 -- Worker
@@ -40,6 +42,7 @@ GRANT SELECT ON company_billing TO of_worker;
 GRANT SELECT, INSERT, UPDATE, DELETE ON weekly_gather, search_run, report, report_row, notification, azure_cost_daily TO of_worker;
 GRANT SELECT (expires_at), DELETE ON sign_in_token TO of_worker;
 GRANT SELECT (expires_at, revoked_at), DELETE ON user_session TO of_worker;
+GRANT SELECT (created_at), DELETE ON access_request TO of_worker;
 
 -- Tables added by later migrations get no access until a migration grants it
 -- explicitly; that is deliberate, so each new table's access is decided.

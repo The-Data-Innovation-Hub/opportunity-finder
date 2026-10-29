@@ -2,20 +2,27 @@ import {Link, Navigate, Outlet, useLocation, useNavigate} from '@tanstack/react-
 import {useQueryClient} from '@tanstack/react-query'
 import {api, ApiError, daysUntil, formatDate, FREE_PERIOD_NOTICE_DAYS} from '../api'
 import {useMe} from '../useMe'
+import {Landing} from '../pages/Landing'
 import {ErrorBox, Loading, Notice} from './ui'
+
+// Pages anyone can open (BEH-019). The account is not looked up on them: on
+// the sign-in page a stale cookie's 401 could land after the new session is
+// set and send the user straight back.
+const PUBLIC_PATHS = ['/sign-in', '/request-access']
 
 export const Layout = () => {
 	const location = useLocation()
-	const onSignIn = location.pathname == '/sign-in'
-	// Not on the sign-in page: a stale cookie's 401 could land after the new
-	// session is set and send the user straight back here.
-	const me = useMe({enabled: !onSignIn})
+	const onPublicPage = PUBLIC_PATHS.includes(location.pathname)
+	const me = useMe({enabled: !onPublicPage})
 	const queryClient = useQueryClient()
 	const navigate = useNavigate()
 
-	if (onSignIn) return <Shell><Outlet /></Shell>
+	if (onPublicPage) return <Shell nav={<PublicNav />}><Outlet /></Shell>
 	if (me.isPending) return <Shell><Loading /></Shell>
-	if (me.error instanceof ApiError && me.error.status == 401) return <Navigate to="/sign-in" />
+	if (me.error instanceof ApiError && me.error.status == 401) {
+		// Signed out at the home page: the landing page; anywhere else, sign in.
+		return location.pathname == '/' ? <Shell nav={<PublicNav />}><Landing /></Shell> : <Navigate to="/sign-in" />
+	}
 	if (me.error) return <Shell><ErrorBox error={me.error} onRetry={() => me.refetch()} /></Shell>
 
 	const signOut = async () => {
@@ -58,6 +65,13 @@ export const Layout = () => {
 	)
 }
 
+const PublicNav = () => (
+	<nav aria-label="Main" className="flex flex-wrap items-center gap-4 text-sm">
+		<Link to="/sign-in" className="font-medium text-brand hover:underline [&.active]:text-ink">Sign in</Link>
+		<Link to="/request-access" className="rounded-md bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-dark">Request access</Link>
+	</nav>
+)
+
 const Shell = ({nav, children}: {nav?: React.ReactNode, children: React.ReactNode}) => (
 	<div className="min-h-screen">
 		<a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded focus:bg-white focus:px-3 focus:py-2">Skip to content</a>
@@ -68,6 +82,6 @@ const Shell = ({nav, children}: {nav?: React.ReactNode, children: React.ReactNod
 			</div>
 		</header>
 		<main id="main" className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-		<footer className="mx-auto max-w-6xl px-4 pb-8 text-xs text-muted">The Data Innovation Hub · Funding and tenders for NI, Ireland and the UK, refreshed every Monday.</footer>
+		<footer className="mx-auto max-w-6xl px-4 pb-8 text-xs text-muted">The Data Innovation Hub · Funding and tenders for NI, Ireland, the UK and EU programmes, refreshed every Monday.</footer>
 	</div>
 )

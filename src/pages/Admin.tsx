@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {Navigate} from '@tanstack/react-router'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {api, COHORT_LABELS, daysUntil, formatDate, money, type Cohort, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses} from '../api'
+import {api, COHORT_LABELS, REQUEST_COHORT_LABELS, daysUntil, formatDate, money, type Cohort, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses, type AccessRequest} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, Notice, Select} from '../components/ui'
 import {CostCard} from '../components/CostCard'
@@ -15,12 +15,53 @@ export const Admin = () => {
 	return (
 		<div className="space-y-6">
 			<h1 className="text-xl font-semibold">Programme admin</h1>
+			<AccessRequests />
 			<Cost />
 			<FreePeriod />
 			<Companies />
 			<Runs />
 			<Settings />
 		</div>
+	)
+}
+
+// BEH-019: requests from the landing page. Set the company up under
+// Companies, then mark the request handled.
+const AccessRequests = () => {
+	const queryClient = useQueryClient()
+	const requests = useQuery({queryKey: ['admin', 'access-requests'], queryFn: () => api.get<Responses['GET /admin/access-requests']>('/admin/access-requests')})
+	const handle = useMutation({mutationFn: (id: string) => api.patch<Responses['PATCH /admin/access-requests/:id']>(`/admin/access-requests/${id}`, {handled: true}),
+		onSuccess: () => queryClient.invalidateQueries({queryKey: ['admin', 'access-requests']})})
+	if (requests.isPending) return <Card title="Access requests"><Loading /></Card>
+	if (requests.error) return <Card title="Access requests"><ErrorBox error={requests.error} onRetry={() => requests.refetch()} /></Card>
+	const open = requests.data.requests.filter((r) => !r.handled_at)
+	const handled = requests.data.requests.filter((r) => r.handled_at)
+	const row = (r: AccessRequest) => (
+		<li key={r.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+			<div className="min-w-0 space-y-0.5 text-sm">
+				<p className="font-medium">{r.company_name} <span className="ml-1"><Badge tone={r.cohort == 'not_sure' ? 'neutral' : 'brand'}>{REQUEST_COHORT_LABELS[r.cohort]}</Badge></span></p>
+				<p className="text-muted">{r.contact_name} · <a href={`mailto:${r.email}`} className="text-brand hover:underline">{r.email}</a> · {formatDate(r.created_at)}</p>
+				{r.message && <p className="whitespace-pre-line break-words">{r.message}</p>}
+			</div>
+			{r.handled_at
+				? <span className="text-xs text-muted">Handled {formatDate(r.handled_at)}</span>
+				: <Button variant="secondary" busy={handle.isPending && handle.variables == r.id} onClick={() => handle.mutate(r.id)}>Mark handled</Button>}
+		</li>
+	)
+	return (
+		<Card title="Access requests" action={open.length > 0 && <Badge tone="warn">{open.length} waiting</Badge>}>
+			{handle.error && <div className="mb-3"><ErrorBox error={handle.error} /></div>}
+			{open.length
+				? <ul className="divide-y divide-line">{open.map(row)}</ul>
+				: <p className="text-sm text-muted">No requests waiting. Requests from the home page appear here; add the company under Companies, then mark the request handled.</p>}
+			{handled.length > 0 && (
+				<details className="mt-3 text-sm">
+					<summary className="cursor-pointer text-muted">Handled ({handled.length})</summary>
+					<ul className="divide-y divide-line">{handled.map(row)}</ul>
+				</details>
+			)}
+			<p className="mt-3 text-xs text-muted">Requests are deleted 180 days after they were made.</p>
+		</Card>
 	)
 }
 

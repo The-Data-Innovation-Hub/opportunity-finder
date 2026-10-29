@@ -69,3 +69,23 @@ test('DEC-015 a programme admin adds a Connected Health Cluster company and can 
 	await user.selectOptions(await companies.findByLabelText('Group for Care Routing Ltd'), 'connected_health_cluster')
 	await waitFor(() => expect(calls.find((c) => c.method == 'PATCH')?.body).toEqual({cohort: 'connected_health_cluster'}))
 })
+
+test('BEH-019 a programme admin sees waiting access requests and marks one handled', async () => {
+	const user = userEvent.setup()
+	let handled: string | null = null
+	const calls = mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /admin/access-requests': () => ({body: {requests: [{id: 'r1', company_name: 'Ward Robotics Ltd', contact_name: 'Sam Rivera', email: 'sam@wardrobotics.example',
+			cohort: 'connected_health_cluster', message: 'Discharge planning software.', created_at: '2026-10-29T10:00:00Z', handled_at: handled}]}}),
+		'PATCH /admin/access-requests/r1': () => { handled = '2026-10-29T11:00:00Z'; return {body: {request: {id: 'r1', handled_at: handled}}} },
+	})
+	renderApp('/admin')
+	const requests = await card('Access requests')
+	expect(await requests.findByText('1 waiting')).toBeInTheDocument()
+	expect(requests.getByText('Ward Robotics Ltd')).toBeInTheDocument()
+	expect(requests.getByRole('link', {name: 'sam@wardrobotics.example'})).toHaveAttribute('href', 'mailto:sam@wardrobotics.example')
+	await user.click(requests.getByRole('button', {name: 'Mark handled'}))
+	expect(await requests.findByText(/No requests waiting/)).toBeInTheDocument()
+	expect(requests.getByText('Handled (1)')).toBeInTheDocument()
+	expect(calls.find((c) => c.method == 'PATCH')?.body).toEqual({handled: true})
+})

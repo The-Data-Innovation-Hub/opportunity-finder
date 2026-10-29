@@ -519,6 +519,8 @@ export const sendWeeklyEmails = async ({pool, mailer, appUrl, week, emailFor, co
 // --- Retention (DAT-002: 13 weeks) ---------------------------------------------------
 
 export const RETENTION_WEEKS = 13
+// BEH-019: access requests hold a contact's name and work email.
+export const ACCESS_REQUEST_DAYS = 180
 
 export const cleanup = async ({pool, blobs, now = new Date(), weeks = RETENTION_WEEKS, log = () => {}}) => {
 	const cutoff = weekStart(new Date(now.getTime() - weeks * 7 * 864e5))
@@ -534,7 +536,9 @@ export const cleanup = async ({pool, blobs, now = new Date(), weeks = RETENTION_
 	await pool.query("UPDATE weekly_gather SET blob_name = NULL WHERE week_start < $1", [cutoff])
 	await pool.query("DELETE FROM sign_in_token WHERE expires_at < now() - interval '1 day'")
 	await pool.query("DELETE FROM user_session WHERE expires_at < now() - interval '1 day' OR revoked_at < now() - interval '1 day'")
-	log(`cleanup: ${reports.length} reports before ${cutoff} removed`)
-	return {reportsRemoved: reports.length, cutoff}
+	const {rowCount: accessRequestsRemoved} = await pool.query('DELETE FROM access_request WHERE created_at < $1',
+		[new Date(now.getTime() - ACCESS_REQUEST_DAYS * 864e5)])
+	log(`cleanup: ${reports.length} reports before ${cutoff} removed, ${accessRequestsRemoved} access requests`)
+	return {reportsRemoved: reports.length, accessRequestsRemoved, cutoff}
 }
 
