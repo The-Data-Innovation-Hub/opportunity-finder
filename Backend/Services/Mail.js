@@ -53,6 +53,19 @@ export const invitationEmail = ({link, companyName, days}) => ({
 	html: `<p>You have been invited to see ${escapeHtml(companyName)}'s weekly funding and tender reports in Opportunity Finder.</p><p><a href="${escapeHtml(link)}">Accept the invitation</a> (the link works once and expires in ${days} days).</p>`,
 })
 
+const COHORT_TEXT = {ai_in_healthcare: 'AI in Healthcare programme', connected_health_cluster: 'Connected Health Cluster', not_sure: 'Not sure'}
+
+// BEH-019: to each programme admin when someone asks for access.
+export const accessRequestEmail = ({companyName, contactName, email, cohort, message, adminLink}) => {
+	const lines = [`Company: ${companyName}`, `Contact: ${contactName} (${email})`, `Group: ${COHORT_TEXT[cohort] ?? cohort}`, ...(message ? ['', message] : [])]
+	return {
+		subject: `Access request: ${companyName}`,
+		text: [`${contactName} has asked for access to Opportunity Finder.`, '', ...lines, '', `Review it on the Admin page: ${adminLink}`].join('\n'),
+		html: `<p>${escapeHtml(contactName)} has asked for access to Opportunity Finder.</p><p>${lines.filter(Boolean).map(escapeHtml).join('<br>')}</p>`
+			+ `<p><a href="${escapeHtml(adminLink)}">Review it on the Admin page</a></p>`,
+	}
+}
+
 const longDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'})
 const freePeriodNotice = (until) => `The programme is covering the AI cost of these reports until ${longDate(until)}. To keep receiving them after that, a company admin chooses a plan in Settings: a subscription at £30 a month, or your own AI provider key with a £10 a month platform fee (prices exclude VAT). Choosing now costs nothing until then.`
 

@@ -104,6 +104,17 @@
 - Rollback: the old image ignores the column. `ALTER TABLE company DROP COLUMN cohort` loses which companies are in the cluster, so note them first.
 - Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 28 Oct 2026. Not yet run on Azure.
 
+## 0008_AccessRequest.sql (BEH-019)
+
+| Operation | Compatibility | Lock/rewrite risk | Data-loss risk | Validation |
+|---|---|---|---|---|
+| `CREATE TABLE access_request` (company, contact name, work email, group, optional message, handled at/by; FK `handled_by` to `app_user` ON DELETE SET NULL) and index on `created_at` | Additive; the old image never reads it | New empty table: no lock on existing tables beyond a brief one on `app_user` for the foreign key | None | `access-requests.test.js`; clean install in `npm run test:db` |
+| Grants: `of_api` SELECT, INSERT and UPDATE (`handled_at`, `handled_by`); `of_worker` SELECT (`created_at`) and DELETE (skipped where a role does not exist, as 0003) | Additive | Catalog change only | None | Tests run as the runtime roles, cleanup as `of_worker` |
+
+- Order: migration, then image. The new image writes and reads `access_request`; until it is migrated a request would fail with a 500.
+- Rollback: the old image ignores the table. `DROP TABLE access_request` loses any requests not yet handled, so read them first.
+- Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 29 Oct 2026. Not yet run on Azure.
+
 ## Verification evidence
 
 - Clean install result: passed on a disposable local PostgreSQL 16.15 database, 23 Oct 2026 (`npm run test:db`, 7 pass).

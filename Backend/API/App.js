@@ -8,6 +8,7 @@ import {authRoutes, loadSession, requireSameOrigin, requireUser} from './Auth.js
 import {companyRoutes} from './Companies.js'
 import {adminRoutes} from './Admin.js'
 import {billingRoutes, stripeWebhook} from './Billing.js'
+import {accessRequestRoutes} from './AccessRequests.js'
 
 export const JSON_BODY_LIMIT = '64kb'
 
@@ -34,6 +35,7 @@ export const createApp = ({pool, mailer, secrets, blobs, checkKey, billing = nul
 	api.use(requireSameOrigin(allowedOrigins))
 	api.use(loadSession(pool))
 	api.use(authRoutes({pool, mailer, appUrl, secureCookies, limits: rateLimits}))
+	api.use(accessRequestRoutes({pool, mailer, appUrl, limits: rateLimits}))
 	api.use(requireUser)
 	api.use(companyRoutes({pool, secrets, blobs, mailer, appUrl, checkKey}))
 	api.use(billingRoutes({pool, billing, appUrl, now}))

@@ -129,6 +129,12 @@ try {
 		await capture('GET /admin/programme-key', '/admin/programme-key', {cookie: admin})
 		await capture('DELETE /companies/:companyId/llm-credential', `${c}/llm-credential`, {cookie: founder})
 		await capture('DELETE /admin/programme-key/credential', '/admin/programme-key/credential', {cookie: admin})
+		// BEH-019: a request from the landing page, listed and closed by an admin.
+		await capture('POST /access-requests', '/access-requests', {body: {companyName: 'Ward Robotics Ltd', contactName: 'Sam Rivera',
+			email: 'sam@example.test', cohort: 'not_sure', message: 'Discharge planning software.'}})
+		const {requests} = await capture('GET /admin/access-requests', '/admin/access-requests', {cookie: admin})
+		await capture('PATCH /admin/access-requests/:id', `/admin/access-requests/${requests[0].id}`, {cookie: admin, body: {handled: true}})
+		await capture('GET /admin/access-requests', '/admin/access-requests', {cookie: admin})
 		if (!settings.updatedAt) throw new Error('service settings were not saved')
 	} finally {
 		server.close()

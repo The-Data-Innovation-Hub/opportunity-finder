@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import {useNavigate} from '@tanstack/react-router'
+import {Link, useNavigate} from '@tanstack/react-router'
 import {useQueryClient} from '@tanstack/react-query'
 import {api} from '../api'
 import {Button, Card, ErrorBox, Field, Input, Loading, Notice} from '../components/ui'
@@ -64,6 +64,9 @@ export const SignIn = () => {
 						</Field>
 						<Button type="submit" busy={state == 'sending'} disabled={!email.includes('@')}>Email me a sign-in link</Button>
 					</form>
+				)}
+				{state != 'verifying' && (
+					<p className="mt-6 border-t border-line pt-4 text-sm text-muted">New here? <Link to="/request-access" className="font-medium text-brand hover:underline">Request access</Link> for your company.</p>
 				)}
 			</Card>
 		</div>
