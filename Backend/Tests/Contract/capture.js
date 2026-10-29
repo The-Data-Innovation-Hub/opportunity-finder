@@ -124,6 +124,7 @@ try {
 		await capture('GET /companies/:companyId/members', `${c}/members`, {cookie: founder})
 		await capture('GET /companies/:companyId/billing', `${c}/billing`, {cookie: founder})
 		await capture('GET /admin/companies', '/admin/companies', {cookie: admin})
+		await capture('GET /admin/companies/:id/members', `/admin/companies/${company}/members`, {cookie: admin})
 		await capture('GET /admin/runs', `/admin/runs?week=${WEEK}`, {cookie: admin})
 		await capture('GET /admin/service-cost', '/admin/service-cost', {cookie: admin})
 		await capture('GET /admin/programme-key', '/admin/programme-key', {cookie: admin})
