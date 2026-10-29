@@ -219,7 +219,7 @@ To see what fired: Azure portal, Monitor, Alerts; or run the rule's query in `lo
 From 1 Feb 2027 each company needs a plan: a subscription (£30 a month or £300 a year) or the own-key platform fee (£10 a month or £100 a year), all excluding VAT. Billing stays off until the six Stripe settings are in place; until then the Plan card says plans cannot be bought yet. Do everything in Stripe's **test mode** first, then repeat it in live mode before 3 Jan 2027, when checkout opens.
 
 1. **Account.** Create the Stripe account for The Data Innovation Hub with the UK as its country, and complete activation.
-2. **Tax.** Under Tax, turn on Stripe Tax, add the UK VAT registration, and set prices to exclude tax.
+2. **Tax.** Under Tax, turn on Stripe Tax, add the UK VAT registration, and set prices to exclude tax. Leave **Managed Payments** (Settings → Managed Payments) off: The Data Innovation Hub is the seller and charges VAT under its own registration, not Stripe. The app also turns it off on every checkout session.
 3. **Products and prices.** Create two products, each with two recurring GBP prices, tax behaviour **exclusive**:
    - "Opportunity Finder subscription": £30.00 monthly and £300.00 yearly;
    - "Opportunity Finder platform fee (own AI key)": £10.00 monthly and £100.00 yearly.
