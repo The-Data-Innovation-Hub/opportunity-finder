@@ -86,6 +86,8 @@ test('DEC-014 the real client pins the API version, tags checkout sessions, keep
 		assert.equal(checkout.body.has('payment_method_types[0]'), false)
 		// The Data Innovation Hub is the seller of record, never Stripe.
 		assert.equal(checkout.body.get('managed_payments[enabled]'), 'false')
+		// Invoices carry a business name, not the cardholder's.
+		assert.deepEqual([checkout.body.get('name_collection[business][enabled]'), checkout.body.get('name_collection[business][optional]')], ['true', 'false'])
 		assert.equal(checkout.body.get('automatic_tax[enabled]'), 'true')
 	} finally {
 		server.close()

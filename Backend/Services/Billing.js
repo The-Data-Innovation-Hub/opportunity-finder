@@ -97,6 +97,10 @@ export const createBilling = (env = process.env, connection = {}) => {
 			tax_id_collection: {enabled: true},
 			managed_payments: {enabled: false},
 			billing_address_collection: 'required',
+			// Invoices go to a business: Checkout requires a business name and
+			// saves it on the customer in place of the cardholder's name. Stripe
+			// needs name 'auto' while it collects VAT numbers.
+			name_collection: {business: {enabled: true, optional: false}},
 			customer_update: {address: 'auto', name: 'auto'},
 			success_url: successUrl,
 			cancel_url: cancelUrl,
