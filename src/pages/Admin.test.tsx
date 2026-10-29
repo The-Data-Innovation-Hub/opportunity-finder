@@ -89,3 +89,33 @@ test('BEH-019 a programme admin sees waiting access requests and marks one handl
 	expect(requests.getByText('Handled (1)')).toBeInTheDocument()
 	expect(calls.find((c) => c.method == 'PATCH')?.body).toEqual({handled: true})
 })
+
+test('INF-001 a programme admin views the people invited to a company and resends an expired invitation', async () => {
+	const user = userEvent.setup()
+	const calls = mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /admin/companies': {body: {companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'ai_in_healthcare', created_at: '2026-10-01', members: 2,
+			has_profile: true, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null}]}},
+		[`GET /admin/companies/${COMPANY_ID}/members`]: {body: {members: [
+			{id: 'u1', email: 'founder@care.example', display_name: 'Jo Founder', role: 'company_admin', status: 'active', invited_at: '2026-10-01T09:00:00Z', last_signed_in_at: '2026-10-28T09:00:00Z'},
+			{id: 'u2', email: 'new@care.example', display_name: null, role: 'company_member', status: 'invitation_expired', invited_at: '2026-10-10T09:00:00Z', last_signed_in_at: null},
+		]}},
+		[`POST /admin/companies/${COMPANY_ID}/invitations`]: {status: 201, body: {invitation: {userId: 'u2', email: 'new@care.example', role: 'company_member'}}},
+	})
+	renderApp('/admin')
+	const companies = await card('Companies')
+	await user.click(await companies.findByRole('button', {name: 'View people at Care Routing Ltd (2)'}))
+	const panel = within((await companies.findByRole('heading', {name: 'People at Care Routing Ltd'})).parentElement!.parentElement!)
+	const founder = await panel.findByRole('row', {name: /Jo Founder/})
+	expect(founder).toHaveTextContent('founder@care.example')
+	expect(founder).toHaveTextContent('Admin')
+	expect(founder).toHaveTextContent('Active')
+	expect(within(founder).queryByRole('button', {name: 'Resend invitation'})).toBeNull()
+	const invitee = panel.getByRole('row', {name: /new@care\.example/})
+	expect(invitee).toHaveTextContent('Not given')
+	expect(invitee).toHaveTextContent('Member')
+	expect(invitee).toHaveTextContent('Invitation expired')
+	await user.click(within(invitee).getByRole('button', {name: 'Resend invitation'}))
+	expect(await panel.findByText(/Invitation sent again to new@care\.example/)).toBeInTheDocument()
+	expect(calls.find((c) => c.method == 'POST')?.body).toEqual({email: 'new@care.example', role: 'company_member'})
+})

@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {Navigate} from '@tanstack/react-router'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {api, COHORT_LABELS, REQUEST_COHORT_LABELS, daysUntil, formatDate, money, type Cohort, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses, type AccessRequest} from '../api'
+import {api, COHORT_LABELS, REQUEST_COHORT_LABELS, daysUntil, formatDate, money, type Cohort, type NewCompany, type ProgrammeKey, type Role, type ServiceSettings, type Responses, type AccessRequest, type AdminCompany, type MemberStatus} from '../api'
 import {useMe} from '../useMe'
 import {Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, Notice, Select} from '../components/ui'
 import {CostCard} from '../components/CostCard'
@@ -86,6 +86,7 @@ const Companies = () => {
 	const [name, setName] = useState('')
 	const [cohort, setCohort] = useState<Cohort>('ai_in_healthcare')
 	const [inviting, setInviting] = useState<NewCompany | null>(null)
+	const [viewing, setViewing] = useState<AdminCompany | null>(null)
 	const refresh = () => queryClient.invalidateQueries({queryKey: ['admin', 'companies']})
 	const create = useMutation({mutationFn: () => api.post<Responses['POST /admin/companies']>('/admin/companies', {name, cohort}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
 	const setStatus = useMutation({mutationFn: ({id, status}: {id: string, status: string}) => api.patch(`/admin/companies/${id}`, {status}), onSuccess: refresh})
@@ -125,7 +126,12 @@ const Companies = () => {
 											{(Object.keys(COHORT_LABELS) as Cohort[]).map((k) => <option key={k} value={k}>{COHORT_LABELS[k]}</option>)}
 										</Select>
 									</td>
-									<td className="pr-3">{c.members}</td>
+									<td className="pr-3">
+										<button className="text-xs font-medium text-brand hover:underline" aria-expanded={viewing?.id == c.id}
+											aria-label={`View people at ${c.name} (${c.members})`} onClick={() => setViewing(viewing?.id == c.id ? null : c)}>
+											View ({c.members})
+										</button>
+									</td>
 									<td className="pr-3 space-x-1">
 										<Badge tone={c.has_profile ? 'good' : 'warn'}>{c.has_profile ? 'Profile' : 'No profile'}</Badge>
 										<Badge tone={c.key_status == 'valid' ? 'good' : 'warn'}>{c.key_status == 'valid' ? 'Key working' : c.key_status ? `Key ${c.key_status.replace('_', ' ')}` : 'No key'}</Badge>
@@ -163,7 +169,66 @@ const Companies = () => {
 			</form>
 			{create.error && <div className="mt-2"><ErrorBox error={create.error} /></div>}
 			{inviting && <Invite company={inviting} onDone={() => { setInviting(null); refresh() }} />}
+			{viewing && <People company={viewing} onClose={() => setViewing(null)} />}
 		</Card>
+	)
+}
+
+const STATUS: Record<MemberStatus, {label: string, tone: 'good' | 'brand' | 'warn' | 'neutral'}> = {
+	active: {label: 'Active', tone: 'good'},
+	invited: {label: 'Invited', tone: 'brand'},
+	invitation_expired: {label: 'Invitation expired', tone: 'warn'},
+	disabled: {label: 'Disabled', tone: 'neutral'},
+}
+
+// Everyone invited to a company and whether they have joined (INF-001). A
+// person who has not joined can be sent a fresh link; their role is kept.
+const People = ({company, onClose}: {company: Pick<AdminCompany, 'id' | 'name'>, onClose: () => void}) => {
+	const queryClient = useQueryClient()
+	const people = useQuery({queryKey: ['admin', 'members', company.id],
+		queryFn: () => api.get<Responses['GET /admin/companies/:id/members']>(`/admin/companies/${company.id}/members`)})
+	const resend = useMutation({mutationFn: ({email, role}: {email: string, role: Role}) => api.post(`/admin/companies/${company.id}/invitations`, {email, role}),
+		onSuccess: () => queryClient.invalidateQueries({queryKey: ['admin', 'members', company.id]})})
+	return (
+		<div className="mt-4 rounded-md border border-line bg-surface p-4">
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<h3 className="text-sm font-semibold">People at {company.name}</h3>
+				<Button variant="secondary" onClick={onClose}>Close</Button>
+			</div>
+			{people.isPending && <Loading />}
+			{people.error && <div className="mt-2"><ErrorBox error={people.error} onRetry={() => people.refetch()} /></div>}
+			{people.data && people.data.members.length == 0 && <p className="mt-2 text-sm text-muted">Nobody has been invited yet. Use Invite to send the first invitation.</p>}
+			{people.data && people.data.members.length > 0 && (
+				<div className="mt-2 overflow-x-auto">
+					<table className="w-full text-left text-sm">
+						<thead className="border-b border-line text-xs uppercase text-muted">
+							<tr><th scope="col" className="py-2 pr-3">Name</th><th scope="col" className="pr-3">Email address</th><th scope="col" className="pr-3">Role</th><th scope="col" className="pr-3">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
+						</thead>
+						<tbody className="divide-y divide-line">
+							{people.data.members.map((m) => (
+								<tr key={m.id}>
+									<td className="py-2 pr-3">{m.display_name ?? <span className="text-muted">Not given</span>}</td>
+									<td className="pr-3 break-all">{m.email}</td>
+									<td className="pr-3">{m.role == 'company_admin' ? 'Admin' : 'Member'}</td>
+									<td className="pr-3">
+										<Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
+										<span className="ml-2 text-xs text-muted">{m.last_signed_in_at ? `Last signed in ${formatDate(m.last_signed_in_at)}` : `Invited ${formatDate(m.invited_at)}`}</span>
+									</td>
+									<td className="whitespace-nowrap text-right">
+										{(m.status == 'invited' || m.status == 'invitation_expired') && (
+											<button className="text-xs font-medium text-brand hover:underline disabled:opacity-60" disabled={resend.isPending}
+												onClick={() => resend.mutate({email: m.email, role: m.role})}>Resend invitation</button>
+										)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
+			{resend.error && <div className="mt-2"><ErrorBox error={resend.error} /></div>}
+			{resend.isSuccess && <div className="mt-2"><Notice tone="good">Invitation sent again to {resend.variables.email}. The new link works for 7 days.</Notice></div>}
+		</div>
 	)
 }
 
@@ -171,7 +236,11 @@ const Invite = ({company, onDone}: {company: NewCompany, onDone: () => void}) =>
 	const [email, setEmail] = useState('')
 	const [role, setRole] = useState<Role>('company_admin')
 	const [sent, setSent] = useState<string | null>(null)
-	const invite = useMutation({mutationFn: () => api.post(`/admin/companies/${company.id}/invitations`, {email, role}), onSuccess: () => { setSent(email); setEmail('') }})
+	const queryClient = useQueryClient()
+	const invite = useMutation({mutationFn: () => api.post(`/admin/companies/${company.id}/invitations`, {email, role}), onSuccess: () => {
+		setSent(email); setEmail('')
+		queryClient.invalidateQueries({queryKey: ['admin', 'members', company.id]})
+	}})
 	return (
 		<div className="mt-4 rounded-md border border-line bg-surface p-4">
 			<h3 className="text-sm font-semibold">Invite someone to {company.name}</h3>

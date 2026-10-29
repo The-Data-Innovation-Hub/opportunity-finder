@@ -58,7 +58,7 @@ Observed values: Source group ∈ {Invest NI, UK, InterTradeIreland, NI Health, 
 
 | ID | Inference | Evidence | Risk if wrong | Confirmation status |
 |---|---|---|---|---|
-| INF-001 | A programme administrator (Data Innovation Hub) adds, renames and pauses companies and invites their users; companies don't self-register | "all the companies on our programme" | Open sign-up would need abuse controls and approval | Confirmed (Brendan, 23 Oct 2026) |
+| INF-001 | A programme administrator (Data Innovation Hub) adds, renames and pauses companies and invites their users, and can see each company's invited people (name, email address, role, status: active, invited, invitation expired or disabled) and resend an invitation; companies don't self-register | "all the companies on our programme" | Open sign-up would need abuse controls and approval | Confirmed (Brendan, 23 Oct 2026) |
 | INF-002 | A company may have several users (for example founder and bid writer) | Typical team use | Single-user model would be simpler | Confirmed: company admins and members (Brendan, 23 Oct 2026) |
 | INF-003 | Programme admins see run summaries only, not report contents | DEC-003 | — | Confirmed (DEC-003) |
 | INF-004 | Closed opportunities stay in the report for four weeks after closing (closing date, or first week reported Closed when undated), sorted last, then drop out | Brendan, 23 Oct 2026 (84-row cold-start report too long); reconfirmed 26 Oct 2026 after briefly hiding closed rows | — | Confirmed |

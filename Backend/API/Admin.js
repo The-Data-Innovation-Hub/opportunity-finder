@@ -83,6 +83,26 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 		response.status(201).json({invitation: {userId: result.userId, email: address, role: result.role}})
 	})
 
+	// Who has been invited to a company and whether they have joined. Names,
+	// addresses and roles only, as on the invitation; nothing from the
+	// company's profile or reports (INF-003). Sessions and links are deleted a
+	// day after they expire, so "has signed in" comes from the audit log.
+	router.get('/admin/companies/:id/members', async (request, response) => {
+		const companyId = uuidParam(request.params.id)
+		const {rows: [company]} = await pool.query('SELECT id FROM company WHERE id = $1', [companyId])
+		if (!company) throw notFound()
+		const {rows} = await pool.query(`SELECT u.id, u.email, u.display_name, m.role, m.created_at AS invited_at, signed_in.at AS last_signed_in_at,
+				CASE WHEN u.disabled_at IS NOT NULL THEN 'disabled'
+					WHEN signed_in.at IS NOT NULL THEN 'active'
+					WHEN EXISTS (SELECT 1 FROM sign_in_token t WHERE t.user_id = u.id AND t.purpose = 'invitation' AND t.used_at IS NULL AND t.expires_at > now()) THEN 'invited'
+					ELSE 'invitation_expired' END AS status
+			FROM company_membership m JOIN app_user u ON u.id = m.user_id
+			LEFT JOIN LATERAL (SELECT max(a.created_at) AS at FROM audit_event a
+				WHERE a.actor_user_id = u.id AND a.action IN ('auth.signed_in', 'auth.invitation_accepted')) signed_in ON true
+			WHERE m.company_id = $1 ORDER BY m.role, u.email`, [companyId])
+		response.json({members: rows})
+	})
+
 	router.get('/admin/runs', async (request, response) => {
 		const week = request.query.week == null ? null : isoDate(request.query.week, 'week')
 		const {rows: weeks} = await pool.query(`SELECT week_start, status, started_at, finished_at, tender_notices, funder_pages, competitions

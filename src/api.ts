@@ -103,6 +103,9 @@ export type AdminCompany = {id: string, name: string, status: 'active' | 'paused
 	key_status: string | null, provider: string | null, model: string | null, last_run_week: string | null, last_run_status: string | null, last_run_skip_reason: string | null,
 	billing_plan: Plan | null, billing_status: string | null}
 // A company as just created, before it has members or runs.
+export type MemberStatus = 'active' | 'invited' | 'invitation_expired' | 'disabled'
+// INF-001: who was invited to a company, as a programme admin sees it.
+export type AdminMember = {id: string, email: string, display_name: string | null, role: Role, status: MemberStatus, invited_at: string, last_signed_in_at: string | null}
 export type NewCompany = Pick<AdminCompany, 'id' | 'name' | 'status' | 'cohort' | 'created_at'>
 export type AdminRun = {company_id: string, company: string, status: string, skip_reason: string | null, error_code: string | null, provider: string | null,
 	model: string | null, started_at: string | null, finished_at: string | null, input_tokens: string, output_tokens: string, cache_read_tokens: string, cache_write_tokens: string,
@@ -161,6 +164,7 @@ export type Responses = {
 	'POST /companies/:companyId/billing/sync': Billing
 	'GET /admin/companies': {companies: AdminCompany[]}
 	'POST /admin/companies': {company: NewCompany}
+	'GET /admin/companies/:id/members': {members: AdminMember[]}
 	'GET /admin/runs': AdminRuns
 	'GET /admin/service-cost': ServiceCost
 	'GET /admin/service-settings': {settings: ServiceSettings}

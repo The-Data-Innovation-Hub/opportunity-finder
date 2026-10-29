@@ -356,3 +356,31 @@ test('DEC-011 companies see only the free period end date; the cost card counts 
 	const {rows: audited} = await db.pool.query("SELECT count(*)::int AS n FROM audit_event WHERE action = 'free_period.updated'")
 	assert.equal(audited[0].n, 2)
 })
+
+test('INF-001 a programme admin sees who was invited to a company: name, email, role and status', async () => {
+	const company = (await call('POST', '/admin/companies', {cookie: admin, body: {name: 'People Check Ltd'}})).json.company.id
+	for (const [address, role] of [['joined@people.example', 'company_admin'], ['pending@people.example', 'company_member'],
+		['lapsed@people.example', 'company_member'], ['gone@people.example', 'company_member']]) {
+		assert.equal((await call('POST', `/admin/companies/${company}/invitations`, {cookie: admin, body: {email: address, role}})).status, 201)
+		if (address.startsWith('joined')) assert.equal((await call('POST', '/auth/verify', {body: {token: tokenFromLastMail()}})).status, 200)
+	}
+	await db.pool.query("UPDATE app_user SET display_name = 'Jo Joined' WHERE email = 'joined@people.example'")
+	await db.pool.query(`UPDATE sign_in_token SET created_at = now() - interval '9 days', expires_at = now() - interval '2 days'
+		WHERE user_id = (SELECT id FROM app_user WHERE email = 'lapsed@people.example')`)
+	await db.pool.query("UPDATE app_user SET disabled_at = now() WHERE email = 'gone@people.example'")
+	// Sessions are deleted after they expire: having joined must outlast them.
+	await db.pool.query("DELETE FROM user_session WHERE user_id = (SELECT id FROM app_user WHERE email = 'joined@people.example')")
+
+	const r = await call('GET', `/admin/companies/${company}/members`, {cookie: admin})
+	assert.equal(r.status, 200)
+	assert.deepEqual(r.json.members.map((m) => [m.display_name, m.email, m.role, m.status]), [
+		['Jo Joined', 'joined@people.example', 'company_admin', 'active'],
+		[null, 'gone@people.example', 'company_member', 'disabled'],
+		[null, 'lapsed@people.example', 'company_member', 'invitation_expired'],
+		[null, 'pending@people.example', 'company_member', 'invited'],
+	])
+	assert.ok(r.json.members[0].last_signed_in_at && r.json.members[0].invited_at)
+	assert.equal(r.json.members[3].last_signed_in_at, null)
+	assert.equal((await call('GET', `/admin/companies/${company}/members`, {cookie: alice})).status, 403)
+	assert.equal((await call('GET', '/admin/companies/00000000-0000-4000-8000-000000000000/members', {cookie: admin})).status, 404)
+})
