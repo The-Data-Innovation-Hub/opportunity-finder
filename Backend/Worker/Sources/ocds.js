@@ -106,6 +106,8 @@ const words = (text) => (text ?? '').toLowerCase().match(/[a-z0-9]+/g) ?? []
 // Cheap, explainable pre-filter so Claude only reviews plausible notices:
 // a CPV prefix match or keyword hits in the title/description, still open,
 // and in a region the company covers. Claude makes the final fit judgement.
+// eTenders (Ireland) notices carry only a title, no description or CPV, so
+// one keyword hit is all such a notice can show and is enough to shortlist it.
 export const shortlistTenders = (notices, profile, {today, limit = 60}) => {
 	const keywords = profile.tender_keywords.map((k) => k.toLowerCase())
 	const cpvPrefixes = profile.cpv_prefixes ?? []
@@ -119,7 +121,8 @@ export const shortlistTenders = (notices, profile, {today, limit = 60}) => {
 		let score = 0
 		for (const keyword of keywords) if (text.includes(` ${keyword} `)) score += keyword.includes(' ') ? 3 : 2
 		if (notice.cpv.some((c) => cpvPrefixes.some((p) => c.startsWith(p)))) score += 2
-		if (score >= 3) scored.push({score, notice})
+		const titleOnly = !notice.description && !notice.cpv.length
+		if (score >= (titleOnly ? 2 : 3)) scored.push({score, notice})
 	}
 	scored.sort((a, b) => b.score - a.score)
 	return scored.slice(0, limit).map((s) => s.notice)
