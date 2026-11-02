@@ -140,9 +140,50 @@ test('BEH-019 a programme admin accepts a request: the company is added in a cho
 	await user.type(requests.getByLabelText('Company name'), 'Cameron Labs Ltd')
 	await user.selectOptions(requests.getByLabelText('Group'), 'Connected Health Cluster')
 	await user.click(submit)
-	expect(await requests.findByText(/Cameron Labs Ltd is added to the Connected Health Cluster, and cameron@labs\.example has an invitation/)).toBeInTheDocument()
+	expect(await requests.findByText(/cameron@labs\.example has an invitation to Cameron Labs Ltd \(Connected Health Cluster\) as its company admin/)).toBeInTheDocument()
 	expect(calls.find((c) => c.method == 'POST')?.body).toEqual({companyName: 'Cameron Labs Ltd', cohort: 'connected_health_cluster'})
 	expect(await requests.findByText(/No requests waiting/)).toBeInTheDocument()
 	expect(requests.getByText(/Accepted as Cameron Labs Ltd/)).toBeInTheDocument()
 	expect(calls.filter((c) => c.path == '/admin/companies').length).toBeGreaterThan(1)
+})
+
+const company = (over: Record<string, unknown>) => ({id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'ai_in_healthcare', created_at: '2026-10-01', members: 1,
+	has_profile: false, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null, ...over})
+
+test('BEH-019 a request from a company already on the platform offers to add the contact to it, as a member', async () => {
+	const user = userEvent.setup()
+	const calls = mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /admin/companies': {body: {companies: [company({id: 'okku', name: 'OKKU', cohort: 'connected_health_cluster'})]}},
+		'GET /admin/access-requests': {body: {requests: [{id: 'r1', company_name: 'OKKU Ltd.', contact_name: 'Cameron Black', email: 'cameron@okku.example',
+			cohort: 'connected_health_cluster', message: null, created_at: '2026-11-02T10:00:00Z', handled_at: null, company_id: null, accepted_company: null}]}},
+		'POST /admin/access-requests/r1/accept': {status: 201, body: {company: {id: 'okku', name: 'OKKU', status: 'active', cohort: 'connected_health_cluster', created_at: '2026-10-31'},
+			invitation: {userId: 'u9', email: 'cameron@okku.example', role: 'company_member'}}},
+	})
+	renderApp('/admin')
+	const requests = await card('Access requests')
+	await user.click(await requests.findByRole('button', {name: 'Accept'}))
+	expect(await requests.findByRole('radio', {name: /Add Cameron Black to OKKU \(1 person/})).toBeChecked()
+	expect(requests.getByLabelText('Role')).toHaveValue('company_member')
+	await user.click(requests.getByRole('button', {name: 'Invite to OKKU'}))
+	expect(await requests.findByText(/has an invitation to OKKU \(Connected Health Cluster\) as a member/)).toBeInTheDocument()
+	expect(calls.find((c) => c.method == 'POST')?.body).toEqual({companyId: 'okku', role: 'company_member'})
+})
+
+test('INF-001 only a company with nothing of its own can be deleted, after a confirmation', async () => {
+	const user = userEvent.setup()
+	vi.stubGlobal('confirm', vi.fn(() => true))
+	const calls = mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /admin/companies': {body: {companies: [company({id: 'used', name: 'OKKU', has_profile: true}), company({id: 'dup', name: 'OKKU Ltd'})]}},
+		'DELETE /admin/companies/dup': {status: 204},
+	})
+	renderApp('/admin')
+	const companies = await card('Companies')
+	const used = await companies.findByRole('row', {name: /^OKKU\b(?! Ltd)/})
+	expect(within(used).queryByRole('button', {name: 'Delete'})).toBeNull()
+	const dup = companies.getByRole('row', {name: /OKKU Ltd/})
+	await user.click(within(dup).getByRole('button', {name: 'Delete'}))
+	expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Delete OKKU Ltd\?.*cannot be undone/))
+	await waitFor(() => expect(calls.some((c) => c.method == 'DELETE' && c.path == '/admin/companies/dup')).toBe(true))
 })

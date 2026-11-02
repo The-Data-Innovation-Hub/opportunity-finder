@@ -2,7 +2,7 @@
 // what the service costs. DEC-003: summaries only. Nothing here returns a
 // profile, a report's rows, top five or a key; counts and costs only.
 import express from 'express'
-import {audit, email, forbidden, invalid, isoDate, notFound, oneOf, text, uuidParam, weekStart, withTransaction} from './Library.js'
+import {APIError, audit, email, forbidden, invalid, isoDate, notFound, oneOf, text, uuidParam, weekStart, withTransaction} from './Library.js'
 import {acceptKey, inviteToCompany, sendInvitation} from './Companies.js'
 import {COHORTS, LIVE_PLAN_STATUSES} from '../Services/Plans.js'
 import {accessRequestAdminRoutes} from './AccessRequests.js'
@@ -70,6 +70,25 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 			return rows[0]
 		})
 		response.json({company})
+	})
+
+	// For a company added by mistake, such as a duplicate. Only while it has
+	// nothing of its own; otherwise pause it. Memberships go with it; the
+	// people's accounts stay.
+	router.delete('/admin/companies/:id', async (request, response) => {
+		const id = uuidParam(request.params.id)
+		await withTransaction(pool, async (client) => {
+			const {rows: [c]} = await client.query(`SELECT name,
+					EXISTS (SELECT 1 FROM company_profile WHERE company_id = $1) OR EXISTS (SELECT 1 FROM company_llm_credential WHERE company_id = $1)
+					OR EXISTS (SELECT 1 FROM search_run WHERE company_id = $1) OR EXISTS (SELECT 1 FROM report WHERE company_id = $1)
+					OR EXISTS (SELECT 1 FROM company_billing WHERE company_id = $1) AS in_use
+				FROM company WHERE id = $1 FOR UPDATE`, [id])
+			if (!c) throw notFound()
+			if (c.in_use) throw new APIError(409, 'company_in_use', 'This company has a profile, key, run, report or plan, so it cannot be deleted. Pause it instead.')
+			await client.query('DELETE FROM company WHERE id = $1', [id])
+			await audit(client, {actorUserId: request.user.id, action: 'company.deleted', detail: {companyId: id, name: c.name}})
+		})
+		response.status(204).end()
 	})
 
 	router.post('/admin/companies/:id/invitations', async (request, response) => {

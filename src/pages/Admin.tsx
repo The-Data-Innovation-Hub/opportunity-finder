@@ -63,7 +63,7 @@ const AccessRequests = () => {
 		<Card title="Access requests" action={open.length > 0 && <Badge tone="warn">{open.length} waiting</Badge>}>
 			{handle.error && <div className="mb-3"><ErrorBox error={handle.error} /></div>}
 			{accepted && <div className="mb-3"><Notice tone="good">
-				{accepted.company.name} is added to the {COHORT_LABELS[accepted.company.cohort]}, and {accepted.invitation.email} has an invitation to sign in as its company admin. The link works for 7 days.
+				{accepted.invitation.email} has an invitation to {accepted.company.name} ({COHORT_LABELS[accepted.company.cohort]}) as {accepted.invitation.role == 'company_admin' ? 'its company admin' : 'a member'}. The link works for 7 days.
 			</Notice></div>}
 			{open.length
 				? <ul className="divide-y divide-line">{open.map(row)}</ul>
@@ -79,12 +79,27 @@ const AccessRequests = () => {
 	)
 }
 
+// "OKKU" and "OKKU Ltd" are the same company: compare names without case,
+// punctuation or a trailing company suffix.
+const SUFFIX = /\s+(ltd|limited|plc|llp|cic|inc|llc|group)$/
+const companyKey = (n: string) => n.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().replace(SUFFIX, '')
+const sameCompany = (a: string, b: string) => companyKey(a) == companyKey(b)
+
 const Accept = ({request, onCancel, onAccepted}: {request: AccessRequest, onCancel: () => void, onAccepted: (result: Responses['POST /admin/access-requests/:id/accept']) => void}) => {
 	const queryClient = useQueryClient()
+	const companies = useQuery({queryKey: ['admin', 'companies'], queryFn: () => api.get<Responses['GET /admin/companies']>('/admin/companies')})
+	const matches = (companies.data?.companies ?? []).filter((c) => sameCompany(c.name, request.company_name))
+	const [choice, setChoice] = useState<string | null>(null)
+	// An existing company with the same name is offered first.
+	const target = choice ?? (matches[0]?.id ?? 'new')
+	const existing = matches.find((c) => c.id == target)
 	const [name, setName] = useState(request.company_name)
 	const [cohort, setCohort] = useState<Cohort | ''>(request.cohort == 'not_sure' ? '' : request.cohort)
+	const [role, setRole] = useState<Role | null>(null)
+	const joinRole = role ?? (existing && existing.members > 0 ? 'company_member' : 'company_admin')
 	const accept = useMutation({
-		mutationFn: () => api.post<Responses['POST /admin/access-requests/:id/accept']>(`/admin/access-requests/${request.id}/accept`, {companyName: name, cohort}),
+		mutationFn: () => api.post<Responses['POST /admin/access-requests/:id/accept']>(`/admin/access-requests/${request.id}/accept`,
+			existing ? {companyId: existing.id, role: joinRole} : {companyName: name, cohort}),
 		onSuccess: onAccepted,
 		// A failed invitation email still leaves the company added.
 		onSettled: () => {
@@ -93,22 +108,50 @@ const Accept = ({request, onCancel, onAccepted}: {request: AccessRequest, onCanc
 		},
 	})
 	return (
-		<form className="mt-3 grid gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-[1fr_14rem] sm:items-end" onSubmit={(e) => { e.preventDefault(); accept.mutate() }}>
-			<Field label="Company name">{(id) => <Input id={id} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />}</Field>
-			<Field label="Group" hint={request.cohort == 'not_sure' ? 'They were not sure: choose one.' : undefined}>
-				{(id, d) => (
-					<Select id={id} aria-describedby={d} value={cohort} onChange={(e) => setCohort(e.target.value as Cohort)}>
-						{cohort == '' && <option value="">Choose a group</option>}
-						{(Object.keys(COHORT_LABELS) as Cohort[]).map((k) => <option key={k} value={k}>{COHORT_LABELS[k]}</option>)}
-					</Select>
-				)}
-			</Field>
-			<p className="text-sm text-muted sm:col-span-2">Adds the company and emails {request.email} an invitation to sign in as its company admin.</p>
-			<div className="flex flex-wrap gap-2 sm:col-span-2">
-				<Button type="submit" busy={accept.isPending} disabled={!name.trim() || !cohort}>Add company and invite</Button>
+		<form className="mt-3 space-y-3 rounded-md border border-line bg-surface p-4" onSubmit={(e) => { e.preventDefault(); accept.mutate() }}>
+			{matches.length > 0 && (
+				<fieldset className="space-y-2">
+					<legend className="text-sm font-medium">This company may already be on the platform</legend>
+					{matches.map((c) => (
+						<label key={c.id} className="flex items-center gap-2 text-sm">
+							<input type="radio" name={`target-${request.id}`} checked={target == c.id} onChange={() => setChoice(c.id)} />
+							Add {request.contact_name} to {c.name} ({c.members} {c.members == 1 ? 'person' : 'people'}, {COHORT_LABELS[c.cohort]})
+						</label>
+					))}
+					<label className="flex items-center gap-2 text-sm">
+						<input type="radio" name={`target-${request.id}`} checked={target == 'new'} onChange={() => setChoice('new')} /> Add a new company
+					</label>
+				</fieldset>
+			)}
+			{existing ? (
+				<Field label="Role">
+					{(id) => <Select id={id} value={joinRole} onChange={(e) => setRole(e.target.value as Role)}><option value="company_admin">Admin</option><option value="company_member">Member</option></Select>}
+				</Field>
+			) : (
+				<div className="grid gap-3 sm:grid-cols-[1fr_14rem] sm:items-end">
+					<Field label="Company name">{(id) => <Input id={id} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />}</Field>
+					<Field label="Group" hint={request.cohort == 'not_sure' ? 'They were not sure: choose one.' : undefined}>
+						{(id, d) => (
+							<Select id={id} aria-describedby={d} value={cohort} onChange={(e) => setCohort(e.target.value as Cohort)}>
+								{cohort == '' && <option value="">Choose a group</option>}
+								{(Object.keys(COHORT_LABELS) as Cohort[]).map((k) => <option key={k} value={k}>{COHORT_LABELS[k]}</option>)}
+							</Select>
+						)}
+					</Field>
+				</div>
+			)}
+			<p className="text-sm text-muted">
+				{existing
+					? `Emails ${request.email} an invitation to join ${existing.name} as ${joinRole == 'company_admin' ? 'a company admin' : 'a member'}. No company is added.`
+					: `Adds the company and emails ${request.email} an invitation to sign in as its company admin.`}
+			</p>
+			<div className="flex flex-wrap gap-2">
+				{existing
+					? <Button type="submit" busy={accept.isPending}>Invite to {existing.name}</Button>
+					: <Button type="submit" busy={accept.isPending} disabled={!name.trim() || !cohort}>Add company and invite</Button>}
 				<Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
 			</div>
-			{accept.error && <div className="sm:col-span-2"><ErrorBox error={accept.error} /></div>}
+			{accept.error && <ErrorBox error={accept.error} />}
 		</form>
 	)
 }
@@ -138,6 +181,7 @@ const Companies = () => {
 	const refresh = () => queryClient.invalidateQueries({queryKey: ['admin', 'companies']})
 	const create = useMutation({mutationFn: () => api.post<Responses['POST /admin/companies']>('/admin/companies', {name, cohort}), onSuccess: (d) => { setName(''); refresh(); setInviting(d.company) }})
 	const setStatus = useMutation({mutationFn: ({id, status}: {id: string, status: string}) => api.patch(`/admin/companies/${id}`, {status}), onSuccess: refresh})
+	const remove = useMutation({mutationFn: (id: string) => api.delete(`/admin/companies/${id}`), onSuccess: () => { setViewing(null); refresh() }})
 	// DEC-015: moving a company between groups changes who pays for its runs.
 	const changeCohort = useMutation({mutationFn: ({id, cohort: to}: {id: string, cohort: Cohort}) => api.patch(`/admin/companies/${id}`, {cohort: to}), onSuccess: refresh})
 	const [renaming, setRenaming] = useState<{id: string, name: string} | null>(null)
@@ -194,6 +238,11 @@ const Companies = () => {
 										<button className="text-xs font-medium text-muted hover:underline" onClick={() => setStatus.mutate({id: c.id, status: c.status == 'active' ? 'paused' : 'active'})}>
 											{c.status == 'active' ? 'Pause' : 'Resume'}
 										</button>
+										{/* Only a company with nothing of its own, such as a duplicate; the API checks again. */}
+										{!c.has_profile && !c.key_status && !c.last_run_status && !c.billing_plan && (
+											<button className="ml-3 text-xs font-medium text-bad hover:underline" disabled={remove.isPending}
+												onClick={() => { if (confirm(`Delete ${c.name}? Its ${c.members} ${c.members == 1 ? 'invitation goes' : 'invitations go'} with it. This cannot be undone.`)) remove.mutate(c.id) }}>Delete</button>
+										)}
 									</td>
 								</tr>
 							))}
@@ -202,6 +251,7 @@ const Companies = () => {
 				</div>
 			)}
 			{setStatus.error && <ErrorBox error={setStatus.error} />}
+			{remove.error && <ErrorBox error={remove.error} />}
 			{rename.error && <ErrorBox error={rename.error} />}
 			{changeCohort.error && <ErrorBox error={changeCohort.error} />}
 			<form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); create.mutate() }}>
