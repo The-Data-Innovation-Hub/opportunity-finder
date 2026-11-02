@@ -67,6 +67,8 @@ export const accessRequestAdminRoutes = ({pool, mailer, appUrl}) => {
 	// Accept in one step: add the company in the group asked for, invite the
 	// contact as its company admin and close the request. The admin may correct
 	// the company name and must pick a group when the requester was not sure.
+	// With companyId the contact joins that existing company instead (the
+	// company was already on the platform), and nothing new is added.
 	router.post('/admin/access-requests/:id/accept', async (request, response) => {
 		const id = uuidParam(request.params.id)
 		const b = request.body ?? {}
@@ -74,15 +76,23 @@ export const accessRequestAdminRoutes = ({pool, mailer, appUrl}) => {
 			const {rows: [r]} = await client.query('SELECT company_name, contact_name, email, cohort, handled_at FROM access_request WHERE id = $1 FOR UPDATE', [id])
 			if (!r) throw notFound()
 			if (r.handled_at) throw new APIError(409, 'already_handled', 'This request has already been handled')
-			const name = text(b.companyName ?? r.company_name, 'companyName', {max: 200})
-			const cohort = b.cohort == null && r.cohort != 'not_sure' ? r.cohort : oneOf(b.cohort, 'cohort', COHORTS)
-			const {rows: [c]} = await client.query('INSERT INTO company (name, cohort, created_by) VALUES ($1, $2, $3) RETURNING id, name, status, cohort, created_at',
-				[name, cohort, request.user.id])
-			await audit(client, {companyId: c.id, actorUserId: request.user.id, action: 'company.created', detail: {cohort, accessRequestId: id}})
-			const result = await inviteToCompany({client, companyId: c.id, address: r.email, role: 'company_admin', invitedBy: request.user.id})
+			let c
+			if (b.companyId != null) {
+				;({rows: [c]} = await client.query('SELECT id, name, status, cohort, created_at FROM company WHERE id = $1', [uuidParam(b.companyId)]))
+				if (!c) throw invalid('That company no longer exists')
+			} else {
+				const name = text(b.companyName ?? r.company_name, 'companyName', {max: 200})
+				const cohort = b.cohort == null && r.cohort != 'not_sure' ? r.cohort : oneOf(b.cohort, 'cohort', COHORTS)
+				;({rows: [c]} = await client.query('INSERT INTO company (name, cohort, created_by) VALUES ($1, $2, $3) RETURNING id, name, status, cohort, created_at',
+					[name, cohort, request.user.id]))
+				await audit(client, {companyId: c.id, actorUserId: request.user.id, action: 'company.created', detail: {cohort, accessRequestId: id}})
+			}
+			// Company admin by default; joining an existing company, the admin may make them a member.
+			const role = b.role == null ? 'company_admin' : oneOf(b.role, 'role', ['company_admin', 'company_member'])
+			const result = await inviteToCompany({client, companyId: c.id, address: r.email, role, invitedBy: request.user.id})
 			await client.query('UPDATE app_user SET display_name = $2 WHERE id = $1 AND display_name IS NULL', [result.userId, r.contact_name])
 			await client.query('UPDATE access_request SET handled_at = now(), handled_by = $2, company_id = $3 WHERE id = $1', [id, request.user.id, c.id])
-			await audit(client, {companyId: c.id, actorUserId: request.user.id, action: 'access_request.accepted', detail: {id}})
+			await audit(client, {companyId: c.id, actorUserId: request.user.id, action: 'access_request.accepted', detail: {id, existingCompany: b.companyId != null}})
 			return {company: c, invitation: result, address: r.email}
 		})
 		// After the commit, as for any invitation: a failed email leaves the

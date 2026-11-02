@@ -296,6 +296,8 @@ Refunds are recorded in the company's audit log (`billing.refund`) without an al
 2. Start the migration job.
 3. Once it has succeeded, update the API and the other jobs.
 
+**Release with migration 0010** (company delete grant): migrate first, or the Delete button returns a permission error.
+
 **Release with migration 0009** (accepting access requests): migrate first, as for 0008 below.
 
 **Release with migration 0008.** The landing page's access requests need the `access_request` table (BEH-019), so migrate before switching the API, as for 0006 and 0007 above.

@@ -31,7 +31,7 @@ const call = async (method, path, {cookie, body, origin = APP} = {}) => {
 	const response = await fetch(`${base}${path}`, {method, headers: {
 		...(body ? {'content-type': 'application/json'} : {}), ...(cookie ? {cookie} : {}), ...(origin ? {origin} : {})},
 		body: body ? JSON.stringify(body) : undefined})
-	return {status: response.status, json: await response.json(), headers: response.headers}
+	return {status: response.status, json: response.status == 204 ? null : await response.json(), headers: response.headers}
 }
 
 const signIn = async (address) => {
@@ -174,4 +174,43 @@ test('BEH-019 a "not sure" request needs a group; a clash with an existing compa
 	const {rows: users} = await db.pool.query("SELECT 1 FROM app_user WHERE email = 'dup@care.example'")
 	assert.equal(users.length, 0, 'the rolled-back invitation left no account behind')
 	assert.equal((await call('POST', '/admin/access-requests/00000000-0000-4000-8000-000000000000/accept', {cookie: admin, body: {}})).status, 404)
+})
+
+test('BEH-019 a request from a company already on the platform is accepted into it, without adding another', async () => {
+	const {rows: [existing]} = await db.pool.query("SELECT id FROM company WHERE name = 'Care Routing Ltd'")
+	const id = await newRequest({company: 'Care Routing', contact: 'Sam Second', email: 'sam@care.example', cohort: 'not_sure'})
+	const {rows: [{n: before}]} = await db.pool.query('SELECT count(*)::int AS n FROM company')
+	const r = await call('POST', `/admin/access-requests/${id}/accept`, {cookie: admin, body: {companyId: existing.id, role: 'company_member'}})
+	assert.equal(r.status, 201)
+	assert.deepEqual([r.json.company.id, r.json.invitation.role], [existing.id, 'company_member'])
+	const {rows: [{n: after}]} = await db.pool.query('SELECT count(*)::int AS n FROM company')
+	assert.equal(after, before)
+	const {rows: [req]} = await db.pool.query('SELECT company_id FROM access_request WHERE id = $1', [id])
+	assert.equal(req.company_id, existing.id)
+	const bad = await newRequest({company: 'Ghost', contact: 'G', email: 'g@ghost.example', cohort: 'ai_in_healthcare'})
+	assert.equal((await call('POST', `/admin/access-requests/${bad}/accept`, {cookie: admin, body: {companyId: '00000000-0000-4000-8000-000000000000'}})).status, 400)
+})
+
+test('INF-001 a programme admin deletes a company added by mistake, but never one with a profile, run or plan', async () => {
+	const dup = (await call('POST', '/admin/companies', {cookie: admin, body: {name: 'Duplicate Ltd'}})).json.company.id
+	assert.equal((await call('POST', `/admin/companies/${dup}/invitations`, {cookie: admin, body: {email: 'dup@dup.example'}})).status, 201)
+	const {rows: [busy]} = await db.pool.query("SELECT id FROM company WHERE name = 'Care Routing Ltd'")
+	await db.pool.query("INSERT INTO company_profile (company_id, version, product_description) VALUES ($1, 1, 'Routing software for home care providers across Northern Ireland.')", [busy.id])
+
+	assert.equal((await call('DELETE', `/admin/companies/${dup}`, {cookie: member})).status, 403)
+	assert.equal((await call('DELETE', `/admin/companies/${dup}`, {cookie: admin})).status, 204)
+	const {rows: gone} = await db.pool.query('SELECT 1 FROM company WHERE id = $1', [dup])
+	assert.equal(gone.length, 0)
+	const {rows: members} = await db.pool.query('SELECT 1 FROM company_membership WHERE company_id = $1', [dup])
+	assert.equal(members.length, 0)
+	const {rows: [user]} = await db.pool.query("SELECT 1 AS kept FROM app_user WHERE email = 'dup@dup.example'")
+	assert.equal(user.kept, 1, 'the person\'s account stays')
+	const {rows: [event]} = await db.pool.query("SELECT detail FROM audit_event WHERE action = 'company.deleted'")
+	assert.deepEqual(event.detail, {companyId: dup, name: 'Duplicate Ltd'})
+	assert.equal((await call('DELETE', `/admin/companies/${dup}`, {cookie: admin})).status, 404)
+
+	const r = await call('DELETE', `/admin/companies/${busy.id}`, {cookie: admin})
+	assert.deepEqual([r.status, r.json.error.code], [409, 'company_in_use'])
+	const {rows: still} = await db.pool.query('SELECT 1 FROM company WHERE id = $1', [busy.id])
+	assert.equal(still.length, 1)
 })

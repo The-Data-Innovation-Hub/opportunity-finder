@@ -126,6 +126,16 @@
 - Rollback: the old image ignores the column. Dropping it loses only which company each accepted request became.
 - Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 2 Nov 2026. Not yet run on Azure.
 
+## 0010_CompanyDelete.sql (INF-001)
+
+| Operation | Compatibility | Lock/rewrite risk | Data-loss risk | Validation |
+|---|---|---|---|---|
+| Grant `of_api` DELETE on `company` (skipped where the role does not exist) | Additive | Catalog change only | The grant enables deleting a company; the API allows it only when the company has no profile, key, run, report or plan, and `company_billing` restricts at the database | `access-requests.test.js` INF-001 delete (runs as `of_api`, including the membership cascade) |
+
+- Order: either. The old image never deletes a company.
+- Rollback: `REVOKE DELETE ON company FROM of_api`.
+- Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 2 Nov 2026. Not yet run on Azure.
+
 ## Verification evidence
 
 - Clean install result: passed on a disposable local PostgreSQL 16.15 database, 23 Oct 2026 (`npm run test:db`, 7 pass).
