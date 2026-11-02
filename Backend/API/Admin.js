@@ -65,7 +65,7 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 
 	router.patch('/admin/companies/:id', async (request, response) => {
 		const id = uuidParam(request.params.id)
-		const status = request.body?.status == null ? null : oneOf(request.body.status, 'status', ['active', 'paused'])
+		const status = request.body?.status == null ? null : oneOf(request.body.status, 'status', ['active', 'paused', 'archived'])
 		const name = request.body?.name == null ? null : text(request.body.name, 'name', {max: 200})
 		const cohort = request.body?.cohort == null ? null : oneOf(request.body.cohort, 'cohort', COHORTS)
 		if (status == null && name == null && cohort == null) throw invalid('Send a status, a name or a group')
@@ -83,14 +83,14 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 	})
 
 	// For a company added by mistake, such as a duplicate. Only while it has
-	// nothing of its own (inUse); otherwise pause it. Memberships and skipped
+	// nothing of its own (inUse); otherwise pause or archive it. Memberships and skipped
 	// runs go with it; the people's accounts stay.
 	router.delete('/admin/companies/:id', async (request, response) => {
 		const id = uuidParam(request.params.id)
 		await withTransaction(pool, async (client) => {
 			const {rows: [c]} = await client.query(`SELECT name, ${inUse('c.id')} AS in_use FROM company c WHERE id = $1 FOR UPDATE`, [id])
 			if (!c) throw notFound()
-			if (c.in_use) throw new APIError(409, 'company_in_use', 'This company has a profile, key, plan, report or completed run, so it cannot be deleted. Pause it instead.')
+			if (c.in_use) throw new APIError(409, 'company_in_use', 'This company has a profile, key, plan, report or completed run, so it cannot be deleted. Pause or archive it instead.')
 			await client.query('DELETE FROM company WHERE id = $1', [id])
 			await audit(client, {actorUserId: request.user.id, action: 'company.deleted', detail: {companyId: id, name: c.name}})
 		})

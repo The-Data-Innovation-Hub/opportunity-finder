@@ -358,7 +358,8 @@ export const runWeek = async ({pool, secrets, blobs, fetchers, now = new Date(),
 
 const runWeekLocked = async ({pool, secrets, blobs, fetchers, now, week, providers, log}) => {
 	const gather = await gatherWeek({pool, blobs, week, fetchers, now, log})
-	const {rows: companies} = await pool.query('SELECT id, name, status FROM company ORDER BY name')
+	// An archived company gets no run row at all; a paused one is recorded as skipped.
+	const {rows: companies} = await pool.query(`SELECT id, name, status FROM company WHERE status <> 'archived' ORDER BY name`)
 	return {week, outcomes: await runCompanies({pool, secrets, blobs, week, gather, companies, now, providers, log})}
 }
 

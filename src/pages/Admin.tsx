@@ -186,20 +186,24 @@ const Companies = () => {
 	const changeCohort = useMutation({mutationFn: ({id, cohort: to}: {id: string, cohort: Cohort}) => api.patch(`/admin/companies/${id}`, {cohort: to}), onSuccess: refresh})
 	const [renaming, setRenaming] = useState<{id: string, name: string} | null>(null)
 	const rename = useMutation({mutationFn: ({id, name: newName}: {id: string, name: string}) => api.patch(`/admin/companies/${id}`, {name: newName}), onSuccess: () => { setRenaming(null); refresh() }})
+	// INF-001: an archived company keeps its records but is out of the weekly
+	// run and listed apart; restoring brings it back paused.
+	const current = companies.data?.companies.filter((c) => c.status != 'archived') ?? []
+	const archived = companies.data?.companies.filter((c) => c.status == 'archived') ?? []
 
 	return (
 		<Card title="Companies">
 			{companies.isPending && <Loading />}
 			{companies.error && <ErrorBox error={companies.error} />}
-			{companies.data && companies.data.companies.length == 0 && <Empty title="No companies yet">Add the first one below.</Empty>}
-			{companies.data && companies.data.companies.length > 0 && (
+			{companies.data && current.length == 0 && <Empty title="No companies yet">Add the first one below.</Empty>}
+			{current.length > 0 && (
 				<div className="overflow-x-auto">
 					<table className="w-full text-left text-sm">
 						<thead className="border-b border-line text-xs uppercase text-muted">
 							<tr><th scope="col" className="py-2 pr-3">Company</th><th scope="col" className="pr-3">Group</th><th scope="col" className="pr-3">People</th><th scope="col" className="pr-3">Set-up</th><th scope="col" className="pr-3">Plan</th><th scope="col" className="pr-3">Last run</th><th scope="col"><span className="sr-only">Actions</span></th></tr>
 						</thead>
 						<tbody className="divide-y divide-line">
-							{companies.data.companies.map((c) => (
+							{current.map((c) => (
 								<tr key={c.id}>
 									<td className="py-2 pr-3 font-medium">
 										{renaming?.id == c.id ? (
@@ -238,6 +242,8 @@ const Companies = () => {
 										<button className="text-xs font-medium text-muted hover:underline" onClick={() => setStatus.mutate({id: c.id, status: c.status == 'active' ? 'paused' : 'active'})}>
 											{c.status == 'active' ? 'Pause' : 'Resume'}
 										</button>
+										<button className="ml-3 text-xs font-medium text-muted hover:underline" disabled={setStatus.isPending}
+											onClick={() => { if (confirm(`Archive ${c.name}? It leaves the weekly run and moves to the Archived list. Nothing is deleted, and you can restore it.`)) setStatus.mutate({id: c.id, status: 'archived'}) }}>Archive</button>
 										{/* Only a company with nothing of its own, such as a duplicate; the API checks again. */}
 										{c.deletable && (
 											<button className="ml-3 text-xs font-medium text-bad hover:underline" disabled={remove.isPending}
@@ -249,6 +255,20 @@ const Companies = () => {
 						</tbody>
 					</table>
 				</div>
+			)}
+			{archived.length > 0 && (
+				<details className="mt-4">
+					<summary className="cursor-pointer text-sm font-medium text-muted">Archived ({archived.length})</summary>
+					<ul className="mt-2 divide-y divide-line text-sm">
+						{archived.map((c) => (
+							<li key={c.id} className="flex items-center justify-between gap-3 py-2">
+								<span>{c.name} <span className="text-xs text-muted">{COHORT_LABELS[c.cohort]}</span></span>
+								<button className="text-xs font-medium text-brand hover:underline" disabled={setStatus.isPending}
+									aria-label={`Restore ${c.name}`} onClick={() => setStatus.mutate({id: c.id, status: 'paused'})}>Restore (paused)</button>
+							</li>
+						))}
+					</ul>
+				</details>
 			)}
 			{setStatus.error && <ErrorBox error={setStatus.error} />}
 			{remove.error && <ErrorBox error={remove.error} />}
