@@ -496,3 +496,15 @@ test('DEC-015 a Connected Health Cluster company gets its first report on the pr
 	assert.equal((await runOf(c, '2027-03-29')).paid_by, 'programme')
 	await endFreePeriod()
 })
+
+test('INF-001 an archived company gets no run at all; a paused one is recorded as skipped', async () => {
+	const archived = await company('Archived Ltd')
+	const paused = await company('Paused Again Ltd')
+	await onlyActive()
+	await q("UPDATE company SET status = 'archived' WHERE id = $1", [archived])
+	const {outcomes} = await runWeek({pool: worker, secrets, blobs, fetchers, now: new Date('2027-04-04T22:00:00Z'), providers: () => scriptedProvider(), ...silent})
+	assert.ok(!(archived in outcomes))
+	assert.equal(outcomes[paused].reason, 'company_paused')
+	const {rows} = await q("SELECT 1 FROM search_run WHERE company_id = $1", [archived])
+	assert.equal(rows.length, 0)
+})

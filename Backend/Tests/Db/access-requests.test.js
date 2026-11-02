@@ -231,3 +231,18 @@ test('INF-001 a company whose run did anything or cost anything cannot be delete
 	await db.pool.query("INSERT INTO search_run (company_id, week_start, status, error_code) VALUES ($1, '2026-11-02', 'failed', 'provider_error')", [failed])
 	assert.equal((await call('DELETE', `/admin/companies/${failed}`, {cookie: admin})).status, 409)
 })
+
+test('INF-001 a company in use can be archived and restored; it keeps its records', async () => {
+	const {rows: [busy]} = await db.pool.query("SELECT id FROM company WHERE name = 'Care Routing Ltd'")
+	assert.equal((await call('PATCH', `/admin/companies/${busy.id}`, {cookie: member, body: {status: 'archived'}})).status, 403)
+	const r = await call('PATCH', `/admin/companies/${busy.id}`, {cookie: admin, body: {status: 'archived'}})
+	assert.deepEqual([r.status, r.json.company.status], [200, 'archived'])
+	const listed = (await call('GET', '/admin/companies', {cookie: admin})).json.companies.find((c) => c.id == busy.id)
+	assert.equal(listed.status, 'archived')
+	const {rows: profiles} = await db.pool.query('SELECT 1 FROM company_profile WHERE company_id = $1', [busy.id])
+	assert.equal(profiles.length, 1, 'nothing of the company\'s is removed')
+	const {rows: [event]} = await db.pool.query("SELECT detail FROM audit_event WHERE action = 'company.status_changed' AND company_id = $1 ORDER BY created_at DESC LIMIT 1", [busy.id])
+	assert.deepEqual(event.detail, {status: 'archived'})
+	assert.equal((await call('PATCH', `/admin/companies/${busy.id}`, {cookie: admin, body: {status: 'gone'}})).status, 400)
+	assert.equal((await call('PATCH', `/admin/companies/${busy.id}`, {cookie: admin, body: {status: 'paused'}})).json.company.status, 'paused')
+})

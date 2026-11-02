@@ -187,3 +187,25 @@ test('INF-001 only a company with nothing of its own can be deleted, after a con
 	expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Delete OKKU Ltd\?.*cannot be undone/))
 	await waitFor(() => expect(calls.some((c) => c.method == 'DELETE' && c.path == '/admin/companies/dup')).toBe(true))
 })
+
+test('INF-001 a company can be archived after a confirmation, and archived companies are listed apart with Restore', async () => {
+	const user = userEvent.setup()
+	vi.stubGlobal('confirm', vi.fn(() => true))
+	const calls = mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /admin/companies': {body: {companies: [company({id: 'live', name: 'Zenith Aspire', has_profile: true, deletable: false}),
+			company({id: 'test', name: 'Test Company', status: 'archived', has_profile: true, deletable: false})]}},
+		'PATCH /admin/companies/live': {body: {company: {id: 'live', name: 'Zenith Aspire', status: 'archived', cohort: 'ai_in_healthcare'}}},
+		'PATCH /admin/companies/test': {body: {company: {id: 'test', name: 'Test Company', status: 'paused', cohort: 'ai_in_healthcare'}}},
+	})
+	renderApp('/admin')
+	const companies = await card('Companies')
+	const live = await companies.findByRole('row', {name: /Zenith Aspire/})
+	expect(companies.queryByRole('row', {name: /Test Company/})).toBeNull()
+	await user.click(within(live).getByRole('button', {name: 'Archive'}))
+	expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Archive Zenith Aspire\?.*Nothing is deleted/))
+	await waitFor(() => expect(calls.find((c) => c.method == 'PATCH' && c.path == '/admin/companies/live')?.body).toEqual({status: 'archived'}))
+	await user.click(companies.getByText('Archived (1)'))
+	await user.click(companies.getByRole('button', {name: 'Restore Test Company'}))
+	await waitFor(() => expect(calls.find((c) => c.method == 'PATCH' && c.path == '/admin/companies/test')?.body).toEqual({status: 'paused'}))
+})
