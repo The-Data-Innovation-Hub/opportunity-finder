@@ -25,10 +25,13 @@ export const Admin = () => {
 	)
 }
 
-// BEH-019: requests from the landing page. Set the company up under
-// Companies, then mark the request handled.
+// BEH-019: requests from the landing page. Accept adds the company and
+// invites the contact as its company admin in one step; Mark handled closes a
+// request without adding anything (a duplicate, or someone turned away).
 const AccessRequests = () => {
 	const queryClient = useQueryClient()
+	const [accepting, setAccepting] = useState<string | null>(null)
+	const [accepted, setAccepted] = useState<Responses['POST /admin/access-requests/:id/accept'] | null>(null)
 	const requests = useQuery({queryKey: ['admin', 'access-requests'], queryFn: () => api.get<Responses['GET /admin/access-requests']>('/admin/access-requests')})
 	const handle = useMutation({mutationFn: (id: string) => api.patch<Responses['PATCH /admin/access-requests/:id']>(`/admin/access-requests/${id}`, {handled: true}),
 		onSuccess: () => queryClient.invalidateQueries({queryKey: ['admin', 'access-requests']})})
@@ -37,23 +40,34 @@ const AccessRequests = () => {
 	const open = requests.data.requests.filter((r) => !r.handled_at)
 	const handled = requests.data.requests.filter((r) => r.handled_at)
 	const row = (r: AccessRequest) => (
-		<li key={r.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
-			<div className="min-w-0 space-y-0.5 text-sm">
-				<p className="font-medium">{r.company_name} <span className="ml-1"><Badge tone={r.cohort == 'not_sure' ? 'neutral' : 'brand'}>{REQUEST_COHORT_LABELS[r.cohort]}</Badge></span></p>
-				<p className="text-muted">{r.contact_name} · <a href={`mailto:${r.email}`} className="text-brand hover:underline">{r.email}</a> · {formatDate(r.created_at)}</p>
-				{r.message && <p className="whitespace-pre-line break-words">{r.message}</p>}
+		<li key={r.id} className="py-3">
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="min-w-0 space-y-0.5 text-sm">
+					<p className="font-medium">{r.company_name} <span className="ml-1"><Badge tone={r.cohort == 'not_sure' ? 'neutral' : 'brand'}>{REQUEST_COHORT_LABELS[r.cohort]}</Badge></span></p>
+					<p className="text-muted">{r.contact_name} · <a href={`mailto:${r.email}`} className="text-brand hover:underline">{r.email}</a> · {formatDate(r.created_at)}</p>
+					{r.message && <p className="whitespace-pre-line break-words">{r.message}</p>}
+				</div>
+				{r.handled_at
+					? <span className="text-xs text-muted">{r.accepted_company ? `Accepted as ${r.accepted_company}` : 'Handled'} {formatDate(r.handled_at)}</span>
+					: accepting != r.id && (
+						<div className="flex flex-wrap gap-2">
+							<Button onClick={() => { setAccepted(null); setAccepting(r.id) }}>Accept</Button>
+							<Button variant="secondary" busy={handle.isPending && handle.variables == r.id} onClick={() => handle.mutate(r.id)}>Mark handled</Button>
+						</div>
+					)}
 			</div>
-			{r.handled_at
-				? <span className="text-xs text-muted">Handled {formatDate(r.handled_at)}</span>
-				: <Button variant="secondary" busy={handle.isPending && handle.variables == r.id} onClick={() => handle.mutate(r.id)}>Mark handled</Button>}
+			{accepting == r.id && <Accept request={r} onCancel={() => setAccepting(null)} onAccepted={(result) => { setAccepting(null); setAccepted(result) }} />}
 		</li>
 	)
 	return (
 		<Card title="Access requests" action={open.length > 0 && <Badge tone="warn">{open.length} waiting</Badge>}>
 			{handle.error && <div className="mb-3"><ErrorBox error={handle.error} /></div>}
+			{accepted && <div className="mb-3"><Notice tone="good">
+				{accepted.company.name} is added to the {COHORT_LABELS[accepted.company.cohort]}, and {accepted.invitation.email} has an invitation to sign in as its company admin. The link works for 7 days.
+			</Notice></div>}
 			{open.length
 				? <ul className="divide-y divide-line">{open.map(row)}</ul>
-				: <p className="text-sm text-muted">No requests waiting. Requests from the home page appear here; add the company under Companies, then mark the request handled.</p>}
+				: <p className="text-sm text-muted">No requests waiting. Requests from the home page appear here.</p>}
 			{handled.length > 0 && (
 				<details className="mt-3 text-sm">
 					<summary className="cursor-pointer text-muted">Handled ({handled.length})</summary>
@@ -62,6 +76,40 @@ const AccessRequests = () => {
 			)}
 			<p className="mt-3 text-xs text-muted">Requests are deleted 180 days after they were made.</p>
 		</Card>
+	)
+}
+
+const Accept = ({request, onCancel, onAccepted}: {request: AccessRequest, onCancel: () => void, onAccepted: (result: Responses['POST /admin/access-requests/:id/accept']) => void}) => {
+	const queryClient = useQueryClient()
+	const [name, setName] = useState(request.company_name)
+	const [cohort, setCohort] = useState<Cohort | ''>(request.cohort == 'not_sure' ? '' : request.cohort)
+	const accept = useMutation({
+		mutationFn: () => api.post<Responses['POST /admin/access-requests/:id/accept']>(`/admin/access-requests/${request.id}/accept`, {companyName: name, cohort}),
+		onSuccess: onAccepted,
+		// A failed invitation email still leaves the company added.
+		onSettled: () => {
+			queryClient.invalidateQueries({queryKey: ['admin', 'companies']})
+			queryClient.invalidateQueries({queryKey: ['admin', 'access-requests']})
+		},
+	})
+	return (
+		<form className="mt-3 grid gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-[1fr_14rem] sm:items-end" onSubmit={(e) => { e.preventDefault(); accept.mutate() }}>
+			<Field label="Company name">{(id) => <Input id={id} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />}</Field>
+			<Field label="Group" hint={request.cohort == 'not_sure' ? 'They were not sure: choose one.' : undefined}>
+				{(id, d) => (
+					<Select id={id} aria-describedby={d} value={cohort} onChange={(e) => setCohort(e.target.value as Cohort)}>
+						{cohort == '' && <option value="">Choose a group</option>}
+						{(Object.keys(COHORT_LABELS) as Cohort[]).map((k) => <option key={k} value={k}>{COHORT_LABELS[k]}</option>)}
+					</Select>
+				)}
+			</Field>
+			<p className="text-sm text-muted sm:col-span-2">Adds the company and emails {request.email} an invitation to sign in as its company admin.</p>
+			<div className="flex flex-wrap gap-2 sm:col-span-2">
+				<Button type="submit" busy={accept.isPending} disabled={!name.trim() || !cohort}>Add company and invite</Button>
+				<Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+			</div>
+			{accept.error && <div className="sm:col-span-2"><ErrorBox error={accept.error} /></div>}
+		</form>
 	)
 }
 

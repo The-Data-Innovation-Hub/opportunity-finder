@@ -76,7 +76,7 @@ test('BEH-019 a programme admin sees waiting access requests and marks one handl
 	const calls = mockApi({
 		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
 		'GET /admin/access-requests': () => ({body: {requests: [{id: 'r1', company_name: 'Ward Robotics Ltd', contact_name: 'Sam Rivera', email: 'sam@wardrobotics.example',
-			cohort: 'connected_health_cluster', message: 'Discharge planning software.', created_at: '2026-10-29T10:00:00Z', handled_at: handled}]}}),
+			cohort: 'connected_health_cluster', message: 'Discharge planning software.', created_at: '2026-10-29T10:00:00Z', handled_at: handled, company_id: null, accepted_company: null}]}}),
 		'PATCH /admin/access-requests/r1': () => { handled = '2026-10-29T11:00:00Z'; return {body: {request: {id: 'r1', handled_at: handled}}} },
 	})
 	renderApp('/admin')
@@ -118,4 +118,31 @@ test('INF-001 a programme admin views the people invited to a company and resend
 	await user.click(within(invitee).getByRole('button', {name: 'Resend invitation'}))
 	expect(await panel.findByText(/Invitation sent again to new@care\.example/)).toBeInTheDocument()
 	expect(calls.find((c) => c.method == 'POST')?.body).toEqual({email: 'new@care.example', role: 'company_member'})
+})
+
+test('BEH-019 a programme admin accepts a request: the company is added in a chosen group and the contact invited', async () => {
+	const user = userEvent.setup()
+	let accepted = false
+	const calls = mockApi({
+		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
+		'GET /admin/access-requests': () => ({body: {requests: [{id: 'r1', company_name: 'Cameron Labs', contact_name: 'Cameron Black', email: 'cameron@labs.example',
+			cohort: 'not_sure', message: null, created_at: '2026-10-30T10:00:00Z', handled_at: accepted ? '2026-11-02T09:00:00Z' : null,
+			company_id: accepted ? 'c9' : null, accepted_company: accepted ? 'Cameron Labs Ltd' : null}]}}),
+		'POST /admin/access-requests/r1/accept': () => { accepted = true; return {status: 201, body: {company: {id: 'c9', name: 'Cameron Labs Ltd', status: 'active',
+			cohort: 'connected_health_cluster', created_at: '2026-11-02'}, invitation: {userId: 'u9', email: 'cameron@labs.example', role: 'company_admin'}}} },
+	})
+	renderApp('/admin')
+	const requests = await card('Access requests')
+	await user.click(await requests.findByRole('button', {name: 'Accept'}))
+	const submit = requests.getByRole('button', {name: 'Add company and invite'})
+	expect(submit).toBeDisabled()
+	await user.clear(requests.getByLabelText('Company name'))
+	await user.type(requests.getByLabelText('Company name'), 'Cameron Labs Ltd')
+	await user.selectOptions(requests.getByLabelText('Group'), 'Connected Health Cluster')
+	await user.click(submit)
+	expect(await requests.findByText(/Cameron Labs Ltd is added to the Connected Health Cluster, and cameron@labs\.example has an invitation/)).toBeInTheDocument()
+	expect(calls.find((c) => c.method == 'POST')?.body).toEqual({companyName: 'Cameron Labs Ltd', cohort: 'connected_health_cluster'})
+	expect(await requests.findByText(/No requests waiting/)).toBeInTheDocument()
+	expect(requests.getByText(/Accepted as Cameron Labs Ltd/)).toBeInTheDocument()
+	expect(calls.filter((c) => c.path == '/admin/companies').length).toBeGreaterThan(1)
 })

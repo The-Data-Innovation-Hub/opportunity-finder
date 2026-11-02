@@ -135,6 +135,9 @@ try {
 			email: 'sam@example.test', cohort: 'not_sure', message: 'Discharge planning software.'}})
 		const {requests} = await capture('GET /admin/access-requests', '/admin/access-requests', {cookie: admin})
 		await capture('PATCH /admin/access-requests/:id', `/admin/access-requests/${requests[0].id}`, {cookie: admin, body: {handled: true}})
+		await send('POST', '/access-requests', {body: {companyName: 'Accepted Co', contactName: 'Cameron Black', email: 'cameron@example.test', cohort: 'connected_health_cluster'}})
+		const waiting = (await send('GET', '/admin/access-requests', {cookie: admin})).json.requests.find((r) => !r.handled_at)
+		await capture('POST /admin/access-requests/:id/accept', `/admin/access-requests/${waiting.id}/accept`, {cookie: admin, body: {}})
 		await capture('GET /admin/access-requests', '/admin/access-requests', {cookie: admin})
 		if (!settings.updatedAt) throw new Error('service settings were not saved')
 	} finally {

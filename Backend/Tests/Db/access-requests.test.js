@@ -123,3 +123,55 @@ test(`BEH-019 requests are deleted ${ACCESS_REQUEST_DAYS} days after they were m
 	const {rows} = await db.pool.query('SELECT company_name FROM access_request')
 	assert.deepEqual(rows.map((r) => r.company_name), ['<b>Bold</b> & Co'])
 })
+
+const newRequest = async (fields) => {
+	const {rows: [r]} = await db.pool.query(`INSERT INTO access_request (company_name, contact_name, email, cohort) VALUES ($1, $2, $3, $4) RETURNING id`,
+		[fields.company, fields.contact, fields.email, fields.cohort])
+	return r.id
+}
+
+test('BEH-019 accepting a request adds the company in its group, invites the contact as company admin and closes the request', async () => {
+	const id = await newRequest({company: 'Cameron Labs', contact: 'Cameron Black', email: 'cameron@labs.example', cohort: 'connected_health_cluster'})
+	assert.equal((await call('POST', `/admin/access-requests/${id}/accept`, {cookie: member, body: {}})).status, 403)
+	const before = mailer.outbox.length
+	const r = await call('POST', `/admin/access-requests/${id}/accept`, {cookie: admin, body: {companyName: 'Cameron Labs Ltd'}})
+	assert.equal(r.status, 201)
+	assert.deepEqual([r.json.company.name, r.json.company.cohort, r.json.invitation.email, r.json.invitation.role],
+		['Cameron Labs Ltd', 'connected_health_cluster', 'cameron@labs.example', 'company_admin'])
+	assert.equal(mailer.outbox.length, before + 1)
+	assert.equal(mailer.outbox.at(-1).to, 'cameron@labs.example')
+	assert.match(mailer.outbox.at(-1).subject, /Cameron Labs Ltd/)
+
+	const people = await call('GET', `/admin/companies/${r.json.company.id}/members`, {cookie: admin})
+	assert.deepEqual(people.json.members.map((m) => [m.display_name, m.email, m.role, m.status]), [['Cameron Black', 'cameron@labs.example', 'company_admin', 'invited']])
+	const list = await call('GET', '/admin/access-requests', {cookie: admin})
+	const accepted = list.json.requests.find((x) => x.id == id)
+	assert.ok(accepted.handled_at)
+	assert.deepEqual([accepted.company_id, accepted.accepted_company], [r.json.company.id, 'Cameron Labs Ltd'])
+	const {rows} = await db.pool.query("SELECT action FROM audit_event WHERE detail->>'id' = $1 OR detail->>'accessRequestId' = $1 ORDER BY created_at", [id])
+	assert.deepEqual(rows.map((e) => e.action), ['company.created', 'access_request.accepted'])
+
+	// The invitation link signs the contact in to their new company.
+	const token = mailer.outbox.at(-1).text.match(/#token=([\w-]+)/)[1]
+	assert.equal((await call('POST', '/auth/verify', {body: {token}})).status, 200)
+
+	const again = await call('POST', `/admin/access-requests/${id}/accept`, {cookie: admin, body: {}})
+	assert.deepEqual([again.status, again.json.error.code], [409, 'already_handled'])
+})
+
+test('BEH-019 a "not sure" request needs a group; a clash with an existing company changes nothing', async () => {
+	const unsure = await newRequest({company: 'Unsure Health', contact: 'Ali Unsure', email: 'ali@unsure.example', cohort: 'not_sure'})
+	assert.equal((await call('POST', `/admin/access-requests/${unsure}/accept`, {cookie: admin, body: {}})).status, 400)
+	assert.equal((await call('POST', `/admin/access-requests/${unsure}/accept`, {cookie: admin, body: {cohort: 'not_sure'}})).status, 400)
+	const ok = await call('POST', `/admin/access-requests/${unsure}/accept`, {cookie: admin, body: {cohort: 'ai_in_healthcare'}})
+	assert.deepEqual([ok.status, ok.json.company.cohort], [201, 'ai_in_healthcare'])
+
+	const clash = await newRequest({company: 'Care Routing Ltd', contact: 'Dup Person', email: 'dup@care.example', cohort: 'ai_in_healthcare'})
+	const r = await call('POST', `/admin/access-requests/${clash}/accept`, {cookie: admin, body: {}})
+	assert.equal(r.status, 409)
+	const {rows: [req]} = await db.pool.query('SELECT handled_at, company_id FROM access_request WHERE id = $1', [clash])
+	assert.deepEqual(req, {handled_at: null, company_id: null})
+	const {rows: users} = await db.pool.query("SELECT 1 FROM app_user WHERE email = 'dup@care.example'")
+	assert.equal(users.length, 0, 'the rolled-back invitation left no account behind')
+	assert.equal((await call('POST', '/admin/access-requests/00000000-0000-4000-8000-000000000000/accept', {cookie: admin, body: {}})).status, 404)
+})

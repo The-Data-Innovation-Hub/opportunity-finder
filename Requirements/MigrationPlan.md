@@ -115,6 +115,17 @@
 - Rollback: the old image ignores the table. `DROP TABLE access_request` loses any requests not yet handled, so read them first.
 - Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 29 Oct 2026. Not yet run on Azure.
 
+## 0009_AccessRequestAccept.sql (BEH-019)
+
+| Operation | Compatibility | Lock/rewrite risk | Data-loss risk | Validation |
+|---|---|---|---|---|
+| `ALTER TABLE access_request ADD COLUMN company_id UUID` with FK `fk_access_request_company` to `company` ON DELETE SET NULL | Additive; the old image never reads it | Nullable column, no default: no rewrite. Adding the FK briefly locks `access_request` (a few rows) and `company` | None | `access-requests.test.js` accept tests; clean install in `npm run test:db` |
+| Grants: `of_api` UPDATE (`company_id`) on `access_request` and UPDATE (`display_name`) on `app_user` (skipped where the role does not exist) | Additive | Catalog change only | None | Tests run as `of_api` |
+
+- Order: migration, then image. The new image lists `company_id` and writes it on accept; the old image fails nothing on the new schema.
+- Rollback: the old image ignores the column. Dropping it loses only which company each accepted request became.
+- Execution: applied to disposable `of_test_*` databases by `npm run test:db` and to local `opportunity_finder_dev`, 2 Nov 2026. Not yet run on Azure.
+
 ## Verification evidence
 
 - Clean install result: passed on a disposable local PostgreSQL 16.15 database, 23 Oct 2026 (`npm run test:db`, 7 pass).
