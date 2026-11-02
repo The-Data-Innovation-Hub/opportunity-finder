@@ -267,7 +267,10 @@ export const companyRoutes = ({pool, secrets, blobs, mailer, appUrl, checkKey}) 
 // An invitation never changes an existing member's role (re-sending to an
 // admin must not demote them, and the last-admin rule lives in one place),
 // and never goes to a programme admin: DEC-003 keeps them out of company data.
-export const inviteToCompany = ({pool, companyId, address, role, invitedBy}) => withTransaction(pool, async (client) => {
+// Pass `client` to make the invitation part of a larger transaction.
+export const inviteToCompany = ({pool, client, ...invitation}) => client ? invite(client, invitation) : withTransaction(pool, (c) => invite(c, invitation))
+
+const invite = async (client, {companyId, address, role, invitedBy}) => {
 	const {rows: users} = await client.query(`INSERT INTO app_user (email) VALUES ($1)
 		ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING id, disabled_at,
 			EXISTS (SELECT 1 FROM programme_admin pa WHERE pa.user_id = app_user.id) AS is_programme_admin`, [address])
@@ -283,7 +286,7 @@ export const inviteToCompany = ({pool, companyId, address, role, invitedBy}) => 
 	const token = await issueLinkToken(client, userId, 'invitation')
 	await audit(client, {companyId, actorUserId: invitedBy, action: membership.created ? 'member.invited' : 'member.invitation_resent', detail: {userId, role: membership.role}})
 	return {userId, token, role: membership.role}
-})
+}
 
 export const sendInvitation = async ({mailer, appUrl, address, companyName, token}) => {
 	try {

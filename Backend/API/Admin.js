@@ -23,7 +23,7 @@ export const PROGRAMME_SECRET_PREFIX = 'programme-llm-'
 export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () => new Date()}) => {
 	const router = express.Router()
 	router.use('/admin', requireProgrammeAdmin)
-	router.use(accessRequestAdminRoutes({pool}))
+	router.use(accessRequestAdminRoutes({pool, mailer, appUrl}))
 
 	router.get('/admin/companies', async (request, response) => {
 		const {rows} = await pool.query(`SELECT c.id, c.name, c.status, c.cohort, c.created_at,

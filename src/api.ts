@@ -138,7 +138,7 @@ export type Billing = {
 export type RequestCohort = Cohort | 'not_sure'
 export const REQUEST_COHORT_LABELS: Record<RequestCohort, string> = {...COHORT_LABELS, not_sure: 'Not sure'}
 export type AccessRequest = {id: string, company_name: string, contact_name: string, email: string, cohort: RequestCohort, message: string | null,
-	created_at: string, handled_at: string | null}
+	created_at: string, handled_at: string | null, company_id: string | null, accepted_company: string | null}
 
 export type ProgrammeSkip = {week: string, reason: 'programme_key_problem' | 'programme_budget_reached'} | null
 
@@ -176,6 +176,7 @@ export type Responses = {
 	'POST /access-requests': {received: true}
 	'GET /admin/access-requests': {requests: AccessRequest[]}
 	'PATCH /admin/access-requests/:id': {request: Pick<AccessRequest, 'id' | 'handled_at'>}
+	'POST /admin/access-requests/:id/accept': {company: NewCompany, invitation: {userId: string, email: string, role: Role}}
 }
 
 export const formatDate = (value: string | null | undefined) =>

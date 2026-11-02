@@ -30,7 +30,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON programme_llm_credential TO of_api;
 GRANT SELECT, INSERT, UPDATE ON company_billing TO of_api;
 GRANT SELECT, INSERT ON stripe_event TO of_api;
 GRANT SELECT, INSERT ON access_request TO of_api;
-GRANT UPDATE (handled_at, handled_by) ON access_request TO of_api;
+GRANT UPDATE (handled_at, handled_by, company_id) ON access_request TO of_api;
+GRANT UPDATE (display_name) ON app_user TO of_api;
 GRANT SELECT ON programme_admin, approved_model, weekly_gather, search_run, report, report_row, azure_cost_daily TO of_api;
 
 -- Worker

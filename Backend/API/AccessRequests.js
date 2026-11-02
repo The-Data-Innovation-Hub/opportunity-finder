@@ -3,7 +3,8 @@
 // same way, and only stored and passed to the programme admins: no account is
 // created (INF-001). Admins read and close requests on the Admin page.
 import express from 'express'
-import {audit, createRateLimiter, email, invalid, logLine, notFound, oneOf, rateLimit, text, uuidParam} from './Library.js'
+import {APIError, audit, createRateLimiter, email, invalid, logLine, notFound, oneOf, rateLimit, text, uuidParam, withTransaction} from './Library.js'
+import {inviteToCompany, sendInvitation} from './Companies.js'
 import {accessRequestEmail} from '../Services/Mail.js'
 import {COHORTS} from '../Services/Plans.js'
 
@@ -43,12 +44,13 @@ export const accessRequestRoutes = ({pool, mailer, appUrl, limits = {}}) => {
 }
 
 // Programme admin only (mounted inside the admin router).
-export const accessRequestAdminRoutes = ({pool}) => {
+export const accessRequestAdminRoutes = ({pool, mailer, appUrl}) => {
 	const router = express.Router()
 
 	router.get('/admin/access-requests', async (request, response) => {
-		const {rows} = await pool.query(`SELECT id, company_name, contact_name, email, cohort, message, created_at, handled_at
-			FROM access_request ORDER BY handled_at IS NOT NULL, created_at DESC LIMIT 200`)
+		const {rows} = await pool.query(`SELECT r.id, r.company_name, r.contact_name, r.email, r.cohort, r.message, r.created_at, r.handled_at,
+				r.company_id, c.name AS accepted_company
+			FROM access_request r LEFT JOIN company c ON c.id = r.company_id ORDER BY r.handled_at IS NOT NULL, r.created_at DESC LIMIT 200`)
 		response.json({requests: rows})
 	})
 
@@ -60,6 +62,33 @@ export const accessRequestAdminRoutes = ({pool}) => {
 		if (!row) throw notFound()
 		await audit(pool, {actorUserId: request.user.id, action: 'access_request.handled', detail: {id}})
 		response.json({request: row})
+	})
+
+	// Accept in one step: add the company in the group asked for, invite the
+	// contact as its company admin and close the request. The admin may correct
+	// the company name and must pick a group when the requester was not sure.
+	router.post('/admin/access-requests/:id/accept', async (request, response) => {
+		const id = uuidParam(request.params.id)
+		const b = request.body ?? {}
+		const {company, invitation, address} = await withTransaction(pool, async (client) => {
+			const {rows: [r]} = await client.query('SELECT company_name, contact_name, email, cohort, handled_at FROM access_request WHERE id = $1 FOR UPDATE', [id])
+			if (!r) throw notFound()
+			if (r.handled_at) throw new APIError(409, 'already_handled', 'This request has already been handled')
+			const name = text(b.companyName ?? r.company_name, 'companyName', {max: 200})
+			const cohort = b.cohort == null && r.cohort != 'not_sure' ? r.cohort : oneOf(b.cohort, 'cohort', COHORTS)
+			const {rows: [c]} = await client.query('INSERT INTO company (name, cohort, created_by) VALUES ($1, $2, $3) RETURNING id, name, status, cohort, created_at',
+				[name, cohort, request.user.id])
+			await audit(client, {companyId: c.id, actorUserId: request.user.id, action: 'company.created', detail: {cohort, accessRequestId: id}})
+			const result = await inviteToCompany({client, companyId: c.id, address: r.email, role: 'company_admin', invitedBy: request.user.id})
+			await client.query('UPDATE app_user SET display_name = $2 WHERE id = $1 AND display_name IS NULL', [result.userId, r.contact_name])
+			await client.query('UPDATE access_request SET handled_at = now(), handled_by = $2, company_id = $3 WHERE id = $1', [id, request.user.id, c.id])
+			await audit(client, {companyId: c.id, actorUserId: request.user.id, action: 'access_request.accepted', detail: {id}})
+			return {company: c, invitation: result, address: r.email}
+		})
+		// After the commit, as for any invitation: a failed email leaves the
+		// company and membership in place, and the admin resends from People.
+		await sendInvitation({mailer, appUrl, address, companyName: company.name, token: invitation.token})
+		response.status(201).json({company, invitation: {userId: invitation.userId, email: address, role: invitation.role}})
 	})
 
 	return router
