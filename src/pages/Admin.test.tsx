@@ -37,7 +37,7 @@ test('BEH-016 the Free period card warns when the AI cap cannot cover the subscr
 		'GET /admin/programme-key': {body: {credential: {configured: false}, freePeriodUntil: '2027-01-31', monthlyCapUsd: 100, subscribers: 4}},
 		'GET /admin/companies': {body: {companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'ai_in_healthcare', created_at: '2026-10-01', members: 1, has_profile: true,
 			key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null,
-			billing_plan: 'subscription', billing_status: 'past_due'}]}},
+			billing_plan: 'subscription', billing_status: 'past_due', deletable: false}]}},
 	})
 	renderApp('/admin')
 	const free = await card('Free period for the AI in Healthcare programme (programme pays the AI model)')
@@ -53,7 +53,7 @@ test('DEC-015 a programme admin adds a Connected Health Cluster company and can 
 		'GET /models': {body: {models: []}},
 		'GET /admin/programme-key': {body: {credential: {configured: false}, freePeriodUntil: '2027-01-31', monthlyCapUsd: 100, subscribers: 0}},
 		'GET /admin/companies': {body: {companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'ai_in_healthcare', created_at: '2026-10-01', members: 1,
-			has_profile: true, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null}]}},
+			has_profile: true, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null, deletable: false}]}},
 		'POST /admin/companies': {status: 201, body: {company: {id: 'c2', name: 'Cluster Co', status: 'active', cohort: 'connected_health_cluster', created_at: '2026-10-28'}}},
 		[`PATCH /admin/companies/${COMPANY_ID}`]: {body: {company: {id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'connected_health_cluster'}}},
 	})
@@ -95,7 +95,7 @@ test('INF-001 a programme admin views the people invited to a company and resend
 	const calls = mockApi({
 		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
 		'GET /admin/companies': {body: {companies: [{id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'ai_in_healthcare', created_at: '2026-10-01', members: 2,
-			has_profile: true, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null}]}},
+			has_profile: true, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null, deletable: false}]}},
 		[`GET /admin/companies/${COMPANY_ID}/members`]: {body: {members: [
 			{id: 'u1', email: 'founder@care.example', display_name: 'Jo Founder', role: 'company_admin', status: 'active', invited_at: '2026-10-01T09:00:00Z', last_signed_in_at: '2026-10-28T09:00:00Z'},
 			{id: 'u2', email: 'new@care.example', display_name: null, role: 'company_member', status: 'invitation_expired', invited_at: '2026-10-10T09:00:00Z', last_signed_in_at: null},
@@ -148,7 +148,7 @@ test('BEH-019 a programme admin accepts a request: the company is added in a cho
 })
 
 const company = (over: Record<string, unknown>) => ({id: COMPANY_ID, name: 'Care Routing Ltd', status: 'active', cohort: 'ai_in_healthcare', created_at: '2026-10-01', members: 1,
-	has_profile: false, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null, ...over})
+	has_profile: false, key_status: null, provider: null, model: null, last_run_week: null, last_run_status: null, last_run_skip_reason: null, billing_plan: null, billing_status: null, deletable: true, ...over})
 
 test('BEH-019 a request from a company already on the platform offers to add the contact to it, as a member', async () => {
 	const user = userEvent.setup()
@@ -175,7 +175,7 @@ test('INF-001 only a company with nothing of its own can be deleted, after a con
 	vi.stubGlobal('confirm', vi.fn(() => true))
 	const calls = mockApi({
 		'GET /me': {body: {...meAs('company_admin', {isProgrammeAdmin: true}), companies: []}},
-		'GET /admin/companies': {body: {companies: [company({id: 'used', name: 'OKKU', has_profile: true}), company({id: 'dup', name: 'OKKU Ltd'})]}},
+		'GET /admin/companies': {body: {companies: [company({id: 'used', name: 'OKKU', has_profile: true, deletable: false}), company({id: 'dup', name: 'OKKU Ltd'})]}},
 		'DELETE /admin/companies/dup': {status: 204},
 	})
 	renderApp('/admin')

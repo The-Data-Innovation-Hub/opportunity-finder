@@ -17,6 +17,16 @@ const money = (v) => v == null ? 0 : Math.round(Number(v) * 100) / 100
 const settingsView = (s) => ({searchEnabled: s.search_enabled, bravePricePer1000Usd: Number(s.brave_price_per_1000_usd),
 	monthlyQueryCap: s.monthly_query_cap, reviewDate: s.review_date, updatedAt: s.updated_at})
 
+// A company has something of its own once it has a profile, a key, a plan,
+// a report or a run that did or cost anything. Until then it can be deleted
+// (a duplicate, say); its skipped runs, which hold no data and cost nothing,
+// go with it.
+const inUse = (company) => `(EXISTS (SELECT 1 FROM company_profile WHERE company_id = ${company})
+	OR EXISTS (SELECT 1 FROM company_llm_credential WHERE company_id = ${company})
+	OR EXISTS (SELECT 1 FROM company_billing WHERE company_id = ${company})
+	OR EXISTS (SELECT 1 FROM report WHERE company_id = ${company})
+	OR EXISTS (SELECT 1 FROM search_run WHERE company_id = ${company} AND (status <> 'skipped' OR model_cost_usd > 0 OR search_cost_usd > 0)))`
+
 // DEC-011: the programme's own key, used for every company in the free period.
 export const PROGRAMME_SECRET_PREFIX = 'programme-llm-'
 
@@ -31,7 +41,7 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 				EXISTS (SELECT 1 FROM company_profile p WHERE p.company_id = c.id) AS has_profile,
 				k.status AS key_status, k.provider, k.model,
 				r.week_start AS last_run_week, r.status AS last_run_status, r.skip_reason AS last_run_skip_reason,
-				b.plan AS billing_plan, b.status AS billing_status
+				b.plan AS billing_plan, b.status AS billing_status, NOT ${inUse('c.id')} AS deletable
 			FROM company c
 			LEFT JOIN company_llm_credential k ON k.company_id = c.id
 			LEFT JOIN company_billing b ON b.company_id = c.id
@@ -73,18 +83,14 @@ export const adminRoutes = ({pool, secrets, mailer, appUrl, checkKey, now = () =
 	})
 
 	// For a company added by mistake, such as a duplicate. Only while it has
-	// nothing of its own; otherwise pause it. Memberships go with it; the
-	// people's accounts stay.
+	// nothing of its own (inUse); otherwise pause it. Memberships and skipped
+	// runs go with it; the people's accounts stay.
 	router.delete('/admin/companies/:id', async (request, response) => {
 		const id = uuidParam(request.params.id)
 		await withTransaction(pool, async (client) => {
-			const {rows: [c]} = await client.query(`SELECT name,
-					EXISTS (SELECT 1 FROM company_profile WHERE company_id = $1) OR EXISTS (SELECT 1 FROM company_llm_credential WHERE company_id = $1)
-					OR EXISTS (SELECT 1 FROM search_run WHERE company_id = $1) OR EXISTS (SELECT 1 FROM report WHERE company_id = $1)
-					OR EXISTS (SELECT 1 FROM company_billing WHERE company_id = $1) AS in_use
-				FROM company WHERE id = $1 FOR UPDATE`, [id])
+			const {rows: [c]} = await client.query(`SELECT name, ${inUse('c.id')} AS in_use FROM company c WHERE id = $1 FOR UPDATE`, [id])
 			if (!c) throw notFound()
-			if (c.in_use) throw new APIError(409, 'company_in_use', 'This company has a profile, key, run, report or plan, so it cannot be deleted. Pause it instead.')
+			if (c.in_use) throw new APIError(409, 'company_in_use', 'This company has a profile, key, plan, report or completed run, so it cannot be deleted. Pause it instead.')
 			await client.query('DELETE FROM company WHERE id = $1', [id])
 			await audit(client, {actorUserId: request.user.id, action: 'company.deleted', detail: {companyId: id, name: c.name}})
 		})
