@@ -99,7 +99,7 @@ export type ProgrammeKey = {
 	subscribers: number
 }
 export type ServiceSettings = {searchEnabled: boolean, bravePricePer1000Usd: number, monthlyQueryCap: number, reviewDate: string, updatedAt: string}
-export type AdminCompany = {id: string, name: string, status: 'active' | 'paused', cohort: Cohort, created_at: string, members: number, has_profile: boolean,
+export type AdminCompany = {id: string, name: string, status: 'active' | 'paused', cohort: Cohort, created_at: string, members: number, has_profile: boolean, deletable: boolean,
 	key_status: string | null, provider: string | null, model: string | null, last_run_week: string | null, last_run_status: string | null, last_run_skip_reason: string | null,
 	billing_plan: Plan | null, billing_status: string | null}
 // A company as just created, before it has members or runs.

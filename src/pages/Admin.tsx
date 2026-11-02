@@ -239,7 +239,7 @@ const Companies = () => {
 											{c.status == 'active' ? 'Pause' : 'Resume'}
 										</button>
 										{/* Only a company with nothing of its own, such as a duplicate; the API checks again. */}
-										{!c.has_profile && !c.key_status && !c.last_run_status && !c.billing_plan && (
+										{c.deletable && (
 											<button className="ml-3 text-xs font-medium text-bad hover:underline" disabled={remove.isPending}
 												onClick={() => { if (confirm(`Delete ${c.name}? Its ${c.members} ${c.members == 1 ? 'invitation goes' : 'invitations go'} with it. This cannot be undone.`)) remove.mutate(c.id) }}>Delete</button>
 										)}

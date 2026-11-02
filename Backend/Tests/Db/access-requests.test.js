@@ -197,8 +197,16 @@ test('INF-001 a programme admin deletes a company added by mistake, but never on
 	const {rows: [busy]} = await db.pool.query("SELECT id FROM company WHERE name = 'Care Routing Ltd'")
 	await db.pool.query("INSERT INTO company_profile (company_id, version, product_description) VALUES ($1, 1, 'Routing software for home care providers across Northern Ireland.')", [busy.id])
 
+	// The weekly run skips a company with no profile; that leaves a row with no data or cost.
+	await db.pool.query("INSERT INTO weekly_gather (week_start, status) VALUES ('2026-11-02', 'succeeded') ON CONFLICT DO NOTHING")
+	await db.pool.query("INSERT INTO search_run (company_id, week_start, status, skip_reason) VALUES ($1, '2026-11-02', 'skipped', 'no_profile')", [dup])
+	const listed = (await call('GET', '/admin/companies', {cookie: admin})).json.companies
+	assert.deepEqual([listed.find((c) => c.id == dup).deletable, listed.find((c) => c.id == busy.id).deletable], [true, false])
+
 	assert.equal((await call('DELETE', `/admin/companies/${dup}`, {cookie: member})).status, 403)
 	assert.equal((await call('DELETE', `/admin/companies/${dup}`, {cookie: admin})).status, 204)
+	const {rows: runs} = await db.pool.query('SELECT 1 FROM search_run WHERE company_id = $1', [dup])
+	assert.equal(runs.length, 0, 'the skipped run went with it')
 	const {rows: gone} = await db.pool.query('SELECT 1 FROM company WHERE id = $1', [dup])
 	assert.equal(gone.length, 0)
 	const {rows: members} = await db.pool.query('SELECT 1 FROM company_membership WHERE company_id = $1', [dup])
@@ -213,4 +221,13 @@ test('INF-001 a programme admin deletes a company added by mistake, but never on
 	assert.deepEqual([r.status, r.json.error.code], [409, 'company_in_use'])
 	const {rows: still} = await db.pool.query('SELECT 1 FROM company WHERE id = $1', [busy.id])
 	assert.equal(still.length, 1)
+})
+
+test('INF-001 a company whose run did anything or cost anything cannot be deleted', async () => {
+	const ran = (await call('POST', '/admin/companies', {cookie: admin, body: {name: 'Ran Once Ltd'}})).json.company.id
+	await db.pool.query("INSERT INTO search_run (company_id, week_start, status, skip_reason, model_cost_usd) VALUES ($1, '2026-11-02', 'skipped', 'no_key', 0.12)", [ran])
+	assert.equal((await call('DELETE', `/admin/companies/${ran}`, {cookie: admin})).status, 409)
+	const failed = (await call('POST', '/admin/companies', {cookie: admin, body: {name: 'Failed Once Ltd'}})).json.company.id
+	await db.pool.query("INSERT INTO search_run (company_id, week_start, status, error_code) VALUES ($1, '2026-11-02', 'failed', 'provider_error')", [failed])
+	assert.equal((await call('DELETE', `/admin/companies/${failed}`, {cookie: admin})).status, 409)
 })
