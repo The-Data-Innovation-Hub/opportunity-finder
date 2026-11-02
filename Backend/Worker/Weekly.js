@@ -69,6 +69,7 @@ export const gatherWeek = async ({pool, blobs, week, fetchers, now = new Date(),
 			grants: await fetchers.grants(),
 			funderPages: await fetchers.funderPages({log}),
 		}
+		log(`eTenders (Ireland): ${gather.ieNotices.length} notice(s)`)
 		const blobName = `gathers/${week}.json`
 		await blobs.put(blobName, Buffer.from(JSON.stringify(gather)), 'application/json')
 		await pool.query(`UPDATE weekly_gather SET status = 'succeeded', finished_at = now(), blob_name = $2,
