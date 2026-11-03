@@ -106,7 +106,8 @@ test('BEH-003 weekly run: stores the report, skips companies that cannot run', a
 	assert.equal(Number(run.model_cost_usd), 1.5)
 	assert.equal(Number(run.input_tokens), 3000)
 	const {rows: [report]} = await q('SELECT blob_name, funding_rows, tender_rows, new_this_week FROM report WHERE company_id = $1', [a])
-	assert.deepEqual([report.funding_rows, report.tender_rows, report.new_this_week], [1, 1, 2])
+	// The model's row plus the FundFinder row every report carries.
+	assert.deepEqual([report.funding_rows, report.tender_rows, report.new_this_week], [2, 1, 3])
 	assert.ok(blobs.store.get(report.blob_name).length > 1000, 'xlsx was not written')
 })
 
@@ -223,7 +224,7 @@ test('BEH-004 rows with values the database would reject are cleaned, not lost (
 		providers: () => scriptedProvider({funding: [odd, unnamed]}), ...silent})
 	assert.equal(outcomes[c].status, 'succeeded')
 	const {rows} = await q(`SELECT rr.name, rr.status, rr.closing_date, rr.closed_since FROM report_row rr JOIN report r ON r.id = rr.report_id
-		WHERE r.company_id = $1 AND rr.kind = 'funding' ORDER BY rr.name COLLATE "C"`, [c])
+		WHERE r.company_id = $1 AND rr.kind = 'funding' AND rr.name NOT LIKE 'FundFinder%' ORDER BY rr.name COLLATE "C"`, [c])
 	assert.deepEqual(rows.map((r) => [r.name, r.status, r.closing_date]), [['(untitled)', 'Closed', '2026-12-01'], ['Odd', 'Open', null]])
 	assert.equal(rows[0].closed_since, '2026-11-15')
 })

@@ -7,6 +7,7 @@ import {readFileSync} from 'node:fs'
 import {shortlistTenders, shortlistGrants} from './Sources/ocds.js'
 import {applyClosedRetention} from './Report/retention.js'
 import {shortlistEuCalls} from './Sources/eu.js'
+import {investorDirectoryRow} from './Sources/investors.js'
 import {runSearch, chooseTopFive, scopeRegions, euHost} from './Research/search.js'
 
 const catalogue = JSON.parse(readFileSync(new URL('./Sources/catalogue.json', import.meta.url), 'utf8'))
@@ -69,6 +70,10 @@ export const buildCompanyReport = async ({profile, today, now = new Date(), gath
 		...funding.map((f) => ({name: f.fund, kind: 'funding', region: f.region, status: f.status, closing_date: f.closing_date, amount: f.amount, why_it_fits: f.why_it_fits})),
 		...tenders.map((t) => ({name: t.title, kind: 'tender', region: t.region, status: t.status, closing_date: t.closing_date, amount: t.value, why_it_fits: t.why_it_fits})),
 	]})
+
+	// After the Top 5, which it is never part of: it points to investors, not one opportunity.
+	const directory = investorDirectoryRow(profile, regions.includes('UK') ? 'UK' : 'NI')
+	funding.push({...directory, new_this_week: isNew(directory.fund, directory.website)})
 
 	const notIncluded = results.flatMap((r) => (r.report.not_included ?? []).map((n) => ({...n, region: r.region})))
 	const sources = [...new Set([...funding, ...tenders].flatMap((r) => [r.website, ...(r.source_urls ?? [])]).filter(Boolean))]
