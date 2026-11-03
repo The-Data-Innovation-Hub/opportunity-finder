@@ -1,6 +1,6 @@
-# DEC-016: shared weekly research (proposed, 3 Nov 2026)
+# DEC-016: shared weekly research (approved for trial, 3 Nov 2026)
 
-Status: **proposed, for Brendan's decision.** Nothing here is built yet.
+Status: **approved for a side-by-side trial (Brendan, 3 Nov 2026).** Decisions 1–3 below are yes; decision 4 waits for the trial's measured cost.
 
 Each company's weekly report is researched from scratch today: the AI browses funders' sites for every company separately, so the cost grows in step with the number of companies. This proposal does that browsing once a week for everyone. It builds a shared list of open schemes, then matches each company against the list in one short AI step.
 
@@ -129,9 +129,9 @@ The comparison week costs about one extra week of today's AI (about US$30 for 8 
 
 About **a week** in all. There is no database change, except an optional setting for which path is on. The portal, email and billing are unchanged.
 
-## Decisions needed from Brendan
+## Decisions (Brendan, 3 Nov 2026)
 
-1. Go ahead with building it for a side-by-side trial? *(Recommended: yes.)*
-2. Include stage 3, the small per-company search, in the trial? *(Recommended: yes, so the trial shows whether it earns its cost.)*
-3. Approve about US$30 of AI for the comparison week.
-4. After the trial, revisit pricing (DEC-014) with the measured cost. At about £2 per company a month, a £5 a month or £50 a year price, or an annual donation, covers costs with room for non-payers and upkeep.
+1. Build it for a side-by-side trial: **yes.**
+2. Include stage 3, the small per-company search, in the trial: **yes.**
+3. About US$30 of AI for the comparison week: **approved.**
+4. **Open:** after the trial, revisit pricing (DEC-014) with the measured cost. At about £2 per company a month, a £5 a month or £50 a year price, or an annual donation, covers costs with room for non-payers and upkeep.
