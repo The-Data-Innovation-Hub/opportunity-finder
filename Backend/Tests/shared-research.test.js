@@ -100,7 +100,7 @@ test('DEC-016 matching: one call per region from the shared list with no web acc
 	assert.ok(matches.every((c) => c.tools.length == 1), 'no web tools without stage 3')
 	assert.match(matches[0].text, /Shared Scheme/)
 	assert.doesNotMatch(matches[1].text, /Shared Scheme/, 'the Ireland pass gets only Ireland\'s records')
-	assert.deepEqual(result.funding.map((f) => [f.fund, f.region]), [['ni-grant', 'NI'], ['ie-grant', 'IE']])
+	assert.deepEqual(result.funding.map((f) => [f.fund, f.region]), [['ni-grant', 'NI'], ['ie-grant', 'IE'], ['FundFinder: map of UK and European early-stage investors', 'NI']])
 	assert.deepEqual([result.searches, result.fetches], [0, 0])
 })
 

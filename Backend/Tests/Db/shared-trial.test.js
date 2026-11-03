@@ -93,10 +93,10 @@ test('DEC-016 trial: shared list then matching on the programme key, compared wi
 
 	const [c] = summary.companies
 	assert.equal(c.outcome, 'succeeded')
-	assert.deepEqual([c.counts.both, c.counts.only_current, c.counts.only_proposed], [1, 0, 1])
+	assert.deepEqual([c.counts.both, c.counts.only_current, c.counts.only_proposed], [2, 0, 1])
 	assert.ok(blobs.store.get('trials/2026-11-02/comparison.xlsx').length > 1000)
 	const comparison = JSON.parse(String(blobs.store.get('trials/2026-11-02/comparison.json')))
-	assert.deepEqual(comparison.companies[0].rows.map((r) => [r.name, r.in_current, r.in_proposed]), [['Grant A', true, true], ['Grant B', false, true]])
+	assert.deepEqual(comparison.companies[0].rows.map((r) => [r.name, r.in_current, r.in_proposed]), [['Grant A', true, true], ['FundFinder: map of UK and European early-stage investors', true, true], ['Grant B', false, true]])
 	assert.ok(blobs.store.has('trials/2026-11-02/catalogue.json') && blobs.store.has(`trials/2026-11-02/companies/${companyId}.json`))
 })
 
