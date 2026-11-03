@@ -21,6 +21,16 @@ Every Sunday the weekly job:
 
 ## Proposal
 
+### Why it suits this platform: every company is in healthcare
+
+Every member company, about 100 in the Connected Health Cluster and about 30 in the AI in Healthcare programme, works in the healthcare market: health tech, medtech, digital health, diagnostics, care and wellbeing. That means their reports draw on largely the same funders, so most of today's per-company browsing reads the same pages again and again. One shared pass can therefore cover nearly everything they need.
+
+- **The shared list has a clear scope:** health and life-sciences funding plus the general innovation and business schemes any company can use. Examples of general schemes are Invest NI innovation vouchers and R&D grants, InterTradeIreland, Innovate UK Smart and KTPs, R&D tax relief, British Business Bank and Enterprise Ireland. Unrelated schemes, such as farming, fisheries, arts, tourism and heritage, are left out, which keeps the list short.
+- **The shared pass can go deeper on health funders** than any single company's pass does today: NIHR (including i4i), SBRI Healthcare, the Biomedical Catalyst, HSC R&D and HSC innovation calls, Health Innovation Research Alliance NI, HRB and Enterprise Ireland health tech in Ireland, and IHI, the EIC and Horizon Europe health calls.
+- **Tender shortlisting can share health search terms and codes:** medical equipment (CPV 33), health and social services (CPV 85) and health software (CPV 48), alongside each company's own keywords.
+- **Stage 3 matters less.** With one market, the shared list catches most niche funders; a per-company search mainly adds sub-sector bodies, for example a diabetes or dementia charity's research fund. The trial shows whether it is needed.
+- **Costs are likely at the low end of the ranges below.** A health-focused list is smaller, so each company's matching call reads less, and nearly identical lists get the most from the prompt cache.
+
 ### Stage 1: one shared scheme list a week (new)
 
 After the gather, the job runs **one AI pass per region (NI, Ireland, UK, EU), not per company**. Each pass reads the gathered pages, every scheme on the standing checklist, the Innovate UK competitions and the EU calls. It is given a larger allowance (about 60 page reads and 30 searches). It also re-checks every scheme that appeared in **any** company's report last week, so the "re-check last week's rows" rule still holds.
