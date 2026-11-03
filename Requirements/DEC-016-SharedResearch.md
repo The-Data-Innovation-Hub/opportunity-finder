@@ -129,6 +129,16 @@ The comparison week costs about one extra week of today's AI (about US$30 for 8 
 
 About **a week** in all. There is no database change, except an optional setting for which path is on. The portal, email and billing are unchanged.
 
+## As built for the trial (3 Nov 2026)
+
+What was built differs from the proposal above in three small ways, each to keep the code closer to today's:
+
+- **Matching is one call per region, not one per company.** Each region keeps its own checklist, tenders and last week's rows and gets today's coverage check, and `buildCompanyReport` is unchanged apart from which research step it calls. The calls have no browsing and the region's list is cached, so this costs little more than one call.
+- **The code filter does not filter on sector.** It keeps the region's schemes (and the EU's on the host pass) and drops those closed more than four weeks ago. Every company in a region gets the same list, so the list is cached and costs less than sending each a smaller list of its own; deciding fit is left to the model, as today.
+- **Stage 3 is 2 searches and 2 page reads per region**, so 4–6 of each per company, against 20 and 30–40 today.
+
+The trial is a job command, `node Worker/Job.js shared-trial`, started by hand. It uses the latest week with reports (or `TRIAL_WEEK`) and the programme's key. It writes only to `trials/<week>/` in blob storage: the shared list, each company's rebuilt report and `comparison.xlsx` (Summary, Rows and Shared list sheets). It stops once it has spent `TRIAL_SPEND_LIMIT_USD` (default US$40), and a retry reuses what was already done. `TRIAL_STAGE3=off` runs it without stage 3. Its searches come out of the month's search allowance but are not recorded on any run.
+
 ## Decisions (Brendan, 3 Nov 2026)
 
 1. Build it for a side-by-side trial: **yes.**

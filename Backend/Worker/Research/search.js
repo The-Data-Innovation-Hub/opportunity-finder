@@ -44,12 +44,15 @@ const fitsSectors = (tags, profile) => {
 	const mine = (profile.sectors ?? []).join(' ').toLowerCase()
 	return tags.some((t) => mine.includes(t.toLowerCase()))
 }
+// Every checklist scheme for a region, whatever its sectors: the shared
+// scheme list (DEC-016) checks them all once for every company.
+export const allSchemesFor = (region) => SCHEMES.filter((s) => s.region == region)
 export const schemesFor = (region, profile, {eu = false} = {}) => SCHEMES.filter((s) => (s.region == region || (eu && s.region == 'EU')) && fitsSectors(s.sectors, profile))
 
 const nullableString = (description) => ({type: ['string', 'null'], description})
 const isoDate = 'YYYY-MM-DD exactly as published, or null when no fixed date (rolling) or not published'
 
-const FUNDING_ROW = {
+export const FUNDING_ROW = {
 	type: 'object',
 	additionalProperties: false,
 	required: ['fund', 'funder', 'source_group', 'type', 'amount', 'match_funding', 'closing_date', 'status',
@@ -185,31 +188,31 @@ When your research is complete, call submit_report once with every row for your 
 
 export const REGION_NAMES = {NI: 'Northern Ireland', IE: 'Ireland (Republic of Ireland)', UK: 'United Kingdom (UK-wide, England, Scotland and Wales)'}
 
-const formatTender = (n) => [
+export const formatTender = (n) => [
 	`- ${n.title} | buyer: ${n.buyer ?? 'not stated'} | portal: ${n.portal} | stage: ${n.stage ?? 'tender'}`,
 	`  value: ${n.value ?? 'not stated'} | closes: ${n.closing_date ?? 'not stated'}${n.cpv?.length ? ` | CPV: ${n.cpv.join(', ')}` : ''}${n.regions?.length ? ` | regions: ${n.regions.join(', ')}` : ''}`,
 	`  link: ${n.url} | reference: ${n.reference ?? 'n/a'}${n.contact_email ? ` | contact: ${n.contact_email}` : ''}`,
 	n.description ? `  ${n.description.replace(/\s+/g, ' ').slice(0, 600)}` : null,
 ].filter(Boolean).join('\n')
 
-const formatGrant = (g) => `- ${g.title} | funder: ${g.funder ?? 'not stated'} | location: ${g.location ?? 'not stated'} | amount: ${g.amount ?? 'not stated'} | closes: ${g.closing_date ?? 'not stated'} | who can apply: ${g.who_can_apply ?? 'not stated'}\n  link: ${g.url}\n  ${(g.summary ?? '').replace(/\s+/g, ' ').slice(0, 400)}`
+export const formatGrant = (g) => `- ${g.title} | funder: ${g.funder ?? 'not stated'} | location: ${g.location ?? 'not stated'} | amount: ${g.amount ?? 'not stated'} | closes: ${g.closing_date ?? 'not stated'} | who can apply: ${g.who_can_apply ?? 'not stated'}\n  link: ${g.url}\n  ${(g.summary ?? '').replace(/\s+/g, ' ').slice(0, 400)}`
 
-const formatPrevious = (rows) => rows.length == 0
+export const formatPrevious = (rows) => rows.length == 0
 	? 'None for this region.'
 	: rows.map((r) => `- ${r.name} | ${r.status ?? ''} | closes ${r.closing_date ?? 'n/a'} | amount ${r.amount ?? 'n/a'} | rate ${r.match_funding ?? 'n/a'} | email ${r.email ?? 'none'} | phone ${r.phone ?? 'none'} | ${r.website ?? ''}`).join('\n')
 
 const EU_ELIGIBILITY = {true: 'UK and NI organisations can apply', false: 'needs an organisation established in an EU member state (e.g. Ireland)'}
 // One short line per call: the list is long, and repeated on every turn.
-const formatEuListing = (c) => `- ${c.identifier} | ${c.title.slice(0, 90)} | ${c.status == 'Open' ? `closes ${c.closes ?? 'n/a'}` : 'opening soon'}${c.cascade ? ` | ${c.url}` : ''}`
-const formatEuCall = (c) => [
+export const formatEuListing = (c) => `- ${c.identifier} | ${c.title.slice(0, 90)} | ${c.status == 'Open' ? `closes ${c.closes ?? 'n/a'}` : 'opening soon'}${c.cascade ? ` | ${c.url}` : ''}`
+export const formatEuCall = (c) => [
 	`- ${c.title} | ${c.programme}${c.call ? ` | call: ${c.call}` : ''} | ${c.status} | opens ${c.opens ?? 'n/a'} | closes ${c.closes ?? 'n/a'}${c.deadline_model ? ` (${c.deadline_model})` : ''}`,
 	`  ${c.amount ?? 'amount not stated'}${c.action ? ` | ${c.action}` : ''}${c.cascade ? ' | run by an EU-funded project for third parties' : ''} | ${EU_ELIGIBILITY[c.uk_eligible]} | ${c.url}`,
 	c.summary ? `  ${c.summary.slice(0, 500)}` : null,
 ].filter(Boolean).join('\n')
 
-const formatCompetition = (c) => `- ${c.title} | ${c.state ?? ''} | opens ${c.opens ?? 'n/a'} | closes ${c.closes ?? 'n/a'} | ${c.url}\n  ${c.summary ?? ''}${c.eligibility ? ` Eligibility: ${c.eligibility}` : ''}`
+export const formatCompetition = (c) => `- ${c.title} | ${c.state ?? ''} | opens ${c.opens ?? 'n/a'} | closes ${c.closes ?? 'n/a'} | ${c.url}\n  ${c.summary ?? ''}${c.eligibility ? ` Eligibility: ${c.eligibility}` : ''}`
 
-const formatPage = (p) => [
+export const formatPage = (p) => [
 	`=== ${p.organisation}${p.scheme ? `: ${p.scheme}` : ''} | ${p.url}`,
 	p.title ? `Title: ${p.title}` : null,
 	p.text,
@@ -285,29 +288,35 @@ export const missingDecisions = (report, expected) => expected.filter((item) => 
 	return !report.not_included.some((n) => mentions(`${n.name} ${n.reason ?? ''}`, item.id) || covers(n.name, item.name))
 })
 
+// What a region's report must decide on: every checklist scheme for the
+// company, every supplied Innovate UK competition and every shortlisted EU call.
+export const expectedDecisions = ({profile, region, funderPages, euCalls = null}) => [
+	...schemesFor(region, profile, {eu: Array.isArray(euCalls)}).map((s) => ({name: s.scheme, kind: 'checklist scheme'})),
+	...(region == 'UK' ? funderPages?.competitions ?? [] : []).map((c) => ({name: c.title, url: c.url, kind: 'Innovate UK competition'})),
+	...(euCalls ?? []).map((c) => ({name: c.title, id: c.cascade ? c.url : c.identifier, kind: 'EU call'})),
+]
+
+// Sends an incomplete report back with what it is missing.
+export const coverageCheck = ({expected, region, log = () => {}}) => (report) => {
+	const missing = missingDecisions(report, expected)
+	if (!missing.length) return null
+	log(`${region}: ${missing.length} checklist schemes or competitions without a decision; asking again`)
+	return `Report not accepted yet. These have neither a row nor a not_included entry: ${missing.map((m) => `${m.name} (${m.kind})`).join('; ')}. Add a row for each that applies, or a not_included entry with the reason, then call submit_report again with the complete report.`
+}
+
 // provider: from Providers/<name>.js createProvider(), built with the
 // company's own key. tools: optional override for tests.
 export const runSearch = async ({profile, today, region, tenders, grants, previous, funderPages, euCalls = null, provider, searchEnabled = true, searchBudget, tools, log = () => {}}) => {
 	if (!provider) throw new Error('runSearch needs the company\'s own provider (Providers/*.js)')
 	const eu = Array.isArray(euCalls)
 	const runner = tools ?? createToolRunner({domains: domainsFor(eu ? [region, 'EU'] : [region]), searchEnabled, limits: limitsFor(region), budget: searchBudget})
-	const expected = [
-		...schemesFor(region, profile, {eu}).map((s) => ({name: s.scheme, kind: 'checklist scheme'})),
-		...(region == 'UK' ? funderPages?.competitions ?? [] : []).map((c) => ({name: c.title, url: c.url, kind: 'Innovate UK competition'})),
-		...(euCalls ?? []).map((c) => ({name: c.title, id: c.cascade ? c.url : c.identifier, kind: 'EU call'})),
-	]
+	const expected = expectedDecisions({profile, region, funderPages, euCalls})
 	const conversation = provider.start({
 		system: SYSTEM,
 		content: buildUserMessage({profile, today, region, tenders, grants, previous, funderPages, euCalls}),
 		tools: [...(searchEnabled ? [WEB_SEARCH] : []), WEB_FETCH, SUBMIT_REPORT],
 	})
-	const validate = (report) => {
-		const missing = missingDecisions(report, expected)
-		if (!missing.length) return null
-		log(`${region}: ${missing.length} checklist schemes or competitions without a decision; asking again`)
-		return `Report not accepted yet. These have neither a row nor a not_included entry: ${missing.map((m) => `${m.name} (${m.kind})`).join('; ')}. Add a row for each that applies, or a not_included entry with the reason, then call submit_report again with the complete report.`
-	}
-	const report = await research({conversation, runTool: runner.run, finalTool: SUBMIT_REPORT.name, validate, label: region, log})
+	const report = await research({conversation, runTool: runner.run, finalTool: SUBMIT_REPORT.name, validate: coverageCheck({expected, region, log}), label: region, log})
 	return {report, usage: conversation.usage, cost: conversation.costUsd ?? provider.estimateCost(conversation.usage), model: provider.model, searches: runner.used.searches, fetches: runner.used.fetches}
 }
 

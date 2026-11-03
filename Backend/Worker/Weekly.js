@@ -85,12 +85,12 @@ export const gatherWeek = async ({pool, blobs, week, fetchers, now = new Date(),
 
 // --- One company ------------------------------------------------------------------
 
-const toWorkerProfile = (company, p) => ({
+export const toWorkerProfile = (company, p) => ({
 	...p.details, company_name: company.name, product_description: p.product_description, regions: scopeRegions(p.regions),
 	sectors: p.sectors, tender_keywords: p.tender_keywords, cpv_prefixes: p.cpv_prefixes,
 })
 
-const previousRowsFor = async (pool, companyId, week) => {
+export const previousRowsFor = async (pool, companyId, week) => {
 	const {rows} = await pool.query(`SELECT rr.name, rr.status, rr.closed_since, rr.closing_date, rr.website, rr.region, rr.row_data
 		FROM report_row rr JOIN report r ON r.id = rr.report_id AND r.company_id = rr.company_id
 		WHERE r.company_id = $1 AND r.week_start = (SELECT max(week_start) FROM report WHERE company_id = $1 AND week_start < $2)`, [companyId, week])
@@ -137,7 +137,7 @@ const TOKEN_KEYS = ['input_tokens', 'output_tokens', 'cache_creation_input_token
 // the model work done before the failure. With a limit, a conversation is
 // stopped before any request once the run's spend has reached it, so a run
 // can pass its allowance by one request at most.
-const trackUsage = (provider, {limitUsd = Infinity} = {}) => {
+export const trackUsage = (provider, {limitUsd = Infinity} = {}) => {
 	const started = []
 	const spent = () => {
 		const usage = Object.fromEntries(TOKEN_KEYS.map((k) => [k, started.reduce((n, c) => n + (c.usage?.[k] ?? 0), 0)]))

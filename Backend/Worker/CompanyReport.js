@@ -32,7 +32,9 @@ const addUsage = (a, b = {}) => Object.fromEntries(TOKEN_KEYS.map((k) => [k, (a[
 // gather: {ukNotices, ieNotices, grants, funderPages}. previousRows: last
 // week's rows as {name, status, closed_since, closing_date, website, region, ...}.
 // searchBudget: optional {limit, used} shared across the regional passes.
-export const buildCompanyReport = async ({profile, today, now = new Date(), gather, previousRows = [], provider, searchEnabled = true, searchBudget, log = () => {}}) => {
+// researchRegion: how one region is researched, runSearch (today's browsing
+// loop) or matchRegion from the shared scheme list (DEC-016).
+export const buildCompanyReport = async ({profile, today, now = new Date(), gather, previousRows = [], provider, searchEnabled = true, searchBudget, researchRegion = runSearch, log = () => {}}) => {
 	if (searchBudget && searchBudget.limit <= 0) searchEnabled = false
 	const regions = scopeRegions(profile.regions ?? [])
 	const tendersFor = {
@@ -48,7 +50,7 @@ export const buildCompanyReport = async ({profile, today, now = new Date(), gath
 	for (const region of regions) {
 		const previous = previousRows.filter((r) => r.region == region || (region == eu && r.region == 'EU'))
 		log(`${region}: ${tendersFor[region].length} tenders, ${(grantsFor[region] ?? []).length} grants, ${region == eu ? `${euCalls.length} EU calls, ` : ''}${previous.length} rows from last week`)
-		results.push({region, ...(await runSearch({profile, today, region, tenders: tendersFor[region], grants: grantsFor[region], previous,
+		results.push({region, ...(await researchRegion({profile, today, region, tenders: tendersFor[region], grants: grantsFor[region], previous,
 			funderPages: gather.funderPages, euCalls: region == eu ? euCalls : null, provider, searchEnabled, searchBudget, log}))})
 	}
 

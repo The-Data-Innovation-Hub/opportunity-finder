@@ -5,6 +5,8 @@
 //   node Worker/Job.js first-reports every 15 min: a new company's first report, then its email
 //   node Worker/Job.js cleanup      daily: 13-week retention, expired tokens and sessions
 //   node Worker/Job.js azure-cost   daily: hosting cost for the admin card
+//   node Worker/Job.js shared-trial started by hand: DEC-016 side-by-side trial for
+//                                   TRIAL_WEEK (default: the latest week with reports)
 //
 // Exit code is non-zero on failure so the job's run shows as failed.
 import {createPool} from '../Database/Connection.js'
@@ -17,11 +19,12 @@ import {gatherFunderPages} from './Sources/pages.js'
 import {fetchEuCalls} from './Sources/eu.js'
 import {REGIONS} from './Research/search.js'
 import {runWeek, runFirstReports, sendWeeklyEmails, cleanup, targetWeek} from './Weekly.js'
+import {runSharedTrial} from './SharedTrial.js'
 import {collectAzureCost, fetchDailyCost} from './AzureCost.js'
 import {logLine} from '../API/Library.js'
 
 const command = process.argv[2]
-const commands = ['weekly', 'first-reports', 'emails', 'cleanup', 'azure-cost']
+const commands = ['weekly', 'first-reports', 'emails', 'cleanup', 'azure-cost', 'shared-trial']
 if (!commands.includes(command)) {
 	console.error(`[job] usage: node Worker/Job.js ${commands.join('|')}`)
 	process.exit(2)
@@ -53,6 +56,13 @@ try {
 		await sendWeeklyEmails({pool, mailer: createMailer(), appUrl: process.env.APP_URL, week, emailFor: weeklyReportEmail, log})
 	} else if (command == 'cleanup') {
 		await cleanup({pool, blobs: createBlobStore(), log})
+	} else if (command == 'shared-trial') {
+		// Paid AI on the programme's key: started only by hand, with approval.
+		const {rows: [latest]} = await pool.query('SELECT max(week_start)::text AS week FROM report')
+		const week = process.env.TRIAL_WEEK ?? latest.week
+		const summary = await runSharedTrial({pool, secrets: createSecretStore(), blobs: createBlobStore(), week,
+			stage3: process.env.TRIAL_STAGE3 != 'off', spendLimitUsd: Number(process.env.TRIAL_SPEND_LIMIT_USD ?? 40), log})
+		log(JSON.stringify(summary))
 	} else if (command == 'azure-cost') {
 		if (!process.env.AZURE_COST_SCOPE) throw new Error('AZURE_COST_SCOPE is not set')
 		await collectAzureCost({pool, fetchCost: () => fetchDailyCost({scope: process.env.AZURE_COST_SCOPE}), log})
