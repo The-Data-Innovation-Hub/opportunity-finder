@@ -139,6 +139,23 @@ What was built differs from the proposal above in three small ways, each to keep
 
 The trial is a job command, `node Worker/Job.js shared-trial`, started by hand. It uses the latest week with reports (or `TRIAL_WEEK`) and the programme's key. It writes only to `trials/<week>/` in blob storage: the shared list, each company's rebuilt report and `comparison.xlsx` (Summary, Rows and Shared list sheets). It stops once it has spent `TRIAL_SPEND_LIMIT_USD` (default US$40), and a retry reuses what was already done. `TRIAL_STAGE3=off` runs it without stage 3. Its searches come out of the month's search allowance but are not recorded on any run.
 
+## Trial result (9 Nov 2026)
+
+One run on the week of 9 Nov, stage 3 on, four companies. It cost US$13.42 in all. The shared list held 162 schemes and cost US$6.08 for the week.
+
+| Company | Rows today / shared | In both | Only today | Only shared | Figures differ | Top 5 overlap | AI cost today / shared* | Minutes today / shared |
+|---|---|---|---|---|---|---|---|---|
+| Lendar Health | 79 / 89 | 73 | 6 | 16 | 45 | 0 | $3.06 / $3.40 | 11.1 / 10.7 |
+| OKKU Ltd | 52 / 50 | 44 | 8 | 6 | 28 | 3 | $2.87 / $2.99 | 8.8 / 7.5 |
+| The Data Innovation Hub | 80 / 102 | 71 | 9 | 31 | 47 | 0 | $2.90 / $3.43 | 10.6 / 11.8 |
+| Zenith Aspire | 76 / 93 | 70 | 6 | 23 | 46 | 0 | $5.72 / $3.59 | 12.3 / 12.3 |
+
+\* Includes a quarter share of the list. Matching alone averaged US$1.83 a company, against the US$0.30–0.50 estimated.
+
+At 130 companies that is about US$1,100 (£825) a month against about US$2,100 (£1,570) today: roughly half, not the 85–90% estimated. The figure differences and the Top 5 overlap are not yet explained; the comparison workbook has to be read first.
+
+**Cause found:** every region pass was returned at least once by the coverage check, and the return asked for the complete report again, so all rows were written out two or three times. Today's per-company research did the same. Since 9 Nov a returned report or list is completed with the missing decisions only, merged onto what was already submitted (`mergeAdditions` in `Worker/Research/loop.js`), on all three paths. Its effect on cost has not been measured yet.
+
 ## Decisions (Brendan, 3 Nov 2026)
 
 1. Build it for a side-by-side trial: **yes.**

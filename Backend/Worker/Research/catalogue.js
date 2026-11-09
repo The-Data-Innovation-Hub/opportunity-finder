@@ -191,7 +191,7 @@ export const buildSharedCatalogue = async ({today, funderPages, previousRows = [
 			const missing = missingFromCatalogue(result, expected)
 			if (!missing.length) return null
 			log(`catalogue ${region}: ${missing.length} without a decision; asking again`)
-			return `List not accepted yet. These have neither a record nor a not_included entry: ${missing.map((m) => `${m.name} (${m.kind})`).join('; ')}. Add a record for each that still exists, or a not_included entry with the reason, then call submit_schemes again with the complete list.`
+			return `List not accepted yet. These have neither a record nor a not_included entry: ${missing.map((m) => `${m.name} (${m.kind})`).join('; ')}. Call submit_schemes again with only these additions: a record for each that still exists, or a not_included entry with the reason. Do not repeat records already submitted; they are kept.`
 		}
 		log(`catalogue ${region}: ${previous.length} schemes from last week to re-check`)
 		const result = await research({conversation, runTool: runner.run, finalTool: SUBMIT_SCHEMES.name, validate, label: `catalogue ${region}`, log})
@@ -204,7 +204,7 @@ export const buildSharedCatalogue = async ({today, funderPages, previousRows = [
 	return {
 		prepared_on: today,
 		schemes: regions.flatMap((r) => r.schemes),
-		passes: regions.map(({usage, ...r}) => ({region: r.region, schemes: r.schemes.length, dropped: r.dropped, not_included: r.not_included.length,
+		passes: regions.map(({usage: _usage, ...r}) => ({region: r.region, schemes: r.schemes.length, dropped: r.dropped, not_included: r.not_included.length,
 			notes: r.notes, searches: r.searches, fetches: r.fetches, model_cost_usd: Number(r.cost.toFixed(2))})),
 		cost: regions.reduce((n, r) => n + r.cost, 0),
 		searches: regions.reduce((n, r) => n + r.searches, 0),
