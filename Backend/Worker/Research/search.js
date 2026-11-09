@@ -301,7 +301,7 @@ export const coverageCheck = ({expected, region, log = () => {}}) => (report) =>
 	const missing = missingDecisions(report, expected)
 	if (!missing.length) return null
 	log(`${region}: ${missing.length} checklist schemes or competitions without a decision; asking again`)
-	return `Report not accepted yet. These have neither a row nor a not_included entry: ${missing.map((m) => `${m.name} (${m.kind})`).join('; ')}. Add a row for each that applies, or a not_included entry with the reason, then call submit_report again with the complete report.`
+	return `Report not accepted yet. These have neither a row nor a not_included entry: ${missing.map((m) => `${m.name} (${m.kind})`).join('; ')}. Call submit_report again with only these additions: a row for each that applies, or a not_included entry with the reason. Leave every other list empty and do not repeat rows already submitted; they are kept.`
 }
 
 // provider: from Providers/<name>.js createProvider(), built with the

@@ -115,3 +115,29 @@ test('DEC-013 every region scope includes Northern Ireland, and older profiles m
 	assert.deepEqual(scopeRegions([]), ['NI', 'IE', 'UK'])
 	for (const scope of Object.values(REGION_SCOPES)) assert.ok(scope.includes('NI'))
 })
+
+const row = (fund, website = `https://www.investni.com/${fund}`) => ({fund, website, status: 'Open'})
+const needsSeedcorn = (r) => r.not_included.length ? null : 'missing Seedcorn'
+
+test('DEC-016 a returned report is completed with additions only, merged onto the rows already submitted', async () => {
+	const turns = [
+		{calls: [{id: 'a', name: 'submit_report', input: {funding: [row('A'), row('B', 'https://www.investni.com/all')], tenders: [], top_five: [{name: 'A'}], not_included: [], notes: 'First.'}}]},
+		{calls: [{id: 'b', name: 'submit_report', input: {funding: [row('C', 'https://www.investni.com/all')], tenders: [], top_five: [], not_included: [{name: 'Seedcorn', reason: 'Not investor-ready'}], notes: ''}}]},
+	]
+	const sent = []
+	const conversation = {send: async () => turns.shift(), addResults: (r) => sent.push(r), nudge: () => {}}
+	const result = await research({conversation, runTool: async () => ({}), finalTool: 'submit_report', validate: needsSeedcorn})
+	assert.deepEqual(result.funding.map((f) => f.fund), ['A', 'B', 'C'], 'two schemes on one page are both kept')
+	assert.deepEqual(result.top_five, [{name: 'A'}])
+	assert.deepEqual(result.not_included, [{name: 'Seedcorn', reason: 'Not investor-ready'}])
+	assert.equal(result.notes, 'First.')
+	assert.equal(sent.length, 1)
+})
+
+test('DEC-016 a model that resends the complete report leaves no duplicates, the resent row winning', async () => {
+	const {mergeAdditions} = await import('../Worker/Research/loop.js')
+	const held = {funding: [{fund: 'A', website: 'https://x/a', amount: 'old'}], not_included: [{name: 'B', reason: 'n/a'}], notes: 'Same.'}
+	const resent = {funding: [{fund: 'A', website: 'https://x/a', amount: 'new'}], not_included: [{name: 'B', reason: 'n/a'}, {name: 'C', reason: 'n/a'}], notes: 'Same.'}
+	assert.deepEqual(mergeAdditions(held, resent), {funding: [{fund: 'A', website: 'https://x/a', amount: 'new'}],
+		not_included: [{name: 'B', reason: 'n/a'}, {name: 'C', reason: 'n/a'}], notes: 'Same.'})
+})
