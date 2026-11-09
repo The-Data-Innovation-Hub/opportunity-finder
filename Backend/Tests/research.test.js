@@ -141,3 +141,13 @@ test('DEC-016 a model that resends the complete report leaves no duplicates, the
 	assert.deepEqual(mergeAdditions(held, resent), {funding: [{fund: 'A', website: 'https://x/a', amount: 'new'}],
 		not_included: [{name: 'B', reason: 'n/a'}, {name: 'C', reason: 'n/a'}], notes: 'Same.'})
 })
+
+test('DEC-016 last week\'s tender rows carry their value, funding rows their amount', async () => {
+	const {formatPrevious} = await import('../Worker/Research/search.js')
+	const text = formatPrevious([
+		{name: 'Care scheduling system', status: 'Open', closing_date: '2026-11-30', value: '£112,500 excluding VAT (estimated)', website: 'https://www.find-tender.service.gov.uk/Notice/1'},
+		{name: 'Innovation Vouchers', status: 'Rolling', closing_date: null, amount: 'Up to £5,000', website: 'https://www.investni.com/v'},
+	])
+	assert.match(text, /Care scheduling system \| Open \| closes 2026-11-30 \| value £112,500 excluding VAT \(estimated\) \|/)
+	assert.match(text, /Innovation Vouchers \| Rolling \| closes n\/a \| amount Up to £5,000 \|/)
+})
