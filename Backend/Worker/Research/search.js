@@ -197,9 +197,12 @@ export const formatTender = (n) => [
 
 export const formatGrant = (g) => `- ${g.title} | funder: ${g.funder ?? 'not stated'} | location: ${g.location ?? 'not stated'} | amount: ${g.amount ?? 'not stated'} | closes: ${g.closing_date ?? 'not stated'} | who can apply: ${g.who_can_apply ?? 'not stated'}\n  link: ${g.url}\n  ${(g.summary ?? '').replace(/\s+/g, ' ').slice(0, 400)}`
 
+// A tender row keeps its figure in value, a funding row in amount; without
+// the value, matching (which cannot browse) wrote carried-forward tenders with
+// none (DEC-016 trial, 9 Nov 2026).
 export const formatPrevious = (rows) => rows.length == 0
 	? 'None for this region.'
-	: rows.map((r) => `- ${r.name} | ${r.status ?? ''} | closes ${r.closing_date ?? 'n/a'} | amount ${r.amount ?? 'n/a'} | rate ${r.match_funding ?? 'n/a'} | email ${r.email ?? 'none'} | phone ${r.phone ?? 'none'} | ${r.website ?? ''}`).join('\n')
+	: rows.map((r) => `- ${r.name} | ${r.status ?? ''} | closes ${r.closing_date ?? 'n/a'} | ${r.value != null ? `value ${r.value}` : `amount ${r.amount ?? 'n/a'}`} | rate ${r.match_funding ?? 'n/a'} | email ${r.email ?? 'none'} | phone ${r.phone ?? 'none'} | ${r.website ?? ''}`).join('\n')
 
 const EU_ELIGIBILITY = {true: 'UK and NI organisations can apply', false: 'needs an organisation established in an EU member state (e.g. Ireland)'}
 // One short line per call: the list is long, and repeated on every turn.
